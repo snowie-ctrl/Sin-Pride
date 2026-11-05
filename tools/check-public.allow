@@ -10,3 +10,5 @@ test_anUnknownUsernameIs401LikeAWrongPassword
 test_anIdThatIsNotOneIs404BeforeAnyQuery
 # A test name in app/tests/tst_api.cpp that only looks like a token
 aSignedIn401WithNoBodyStillEndsTheSession
+# A made-up cache path in app/tests/stub/test_snapshot.py that only looks like a token
+free-exercise-db/c0ffee/exercises/Plank/0
