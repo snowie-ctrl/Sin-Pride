@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import "logic/words.mjs" as Words
 
 ApplicationWindow {
     id: window
@@ -10,7 +11,7 @@ ApplicationWindow {
     minimumHeight: 700
     visible: true
 
-    title: "Pride"
+    title: Words.appName
     color: Preferences.backgroundPrimary
     font.family: Preferences.appFont
 
