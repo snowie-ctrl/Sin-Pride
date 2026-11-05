@@ -25,3 +25,9 @@ pride_test(tst_sessionauth
 
 pride_test(tst_accountstore
     SOURCES tst_accountstore.cpp ../services/AccountStore.h ../services/AccountStore.cpp)
+
+pride_test(tst_session
+    SOURCES tst_session.cpp FakeServer.h ${PRIDE_API}
+            ../services/AccountStore.h ../services/AccountStore.cpp
+            ../services/Session.h ../services/Session.cpp
+    LIBS Qt6::Network)
