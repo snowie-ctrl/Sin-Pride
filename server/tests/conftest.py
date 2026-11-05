@@ -135,3 +135,37 @@ def client(anonClient):
 def tunnelClient(client):
     client.environ_base["HTTP_CF_CONNECTING_IP"] = "203.0.113.9"
     return client
+
+
+import json  # noqa: E402
+
+ADMIN_TOKEN = "test-admin-token"
+
+
+@pytest.fixture
+def adminRoutes(monkeypatch, tmp_path):
+    """The admin blueprint with its own token file."""
+    admin = loadModule("prideAdminRoutes")
+    config = tmp_path / "prideAdminConfig.json"
+    config.write_text(json.dumps({"token": ADMIN_TOKEN}))
+    monkeypatch.setattr(admin, "CONFIG_FILE", config)
+    admin._tokenCache.update({"mtime": None, "token": None})
+    return admin
+
+
+def _adminClient(admin):
+    app = flask.Flask("pride-admin-tests")
+    app.register_blueprint(admin.prideAdminBP, url_prefix="/api/pride-admin")
+    return app.test_client()
+
+
+@pytest.fixture
+def adminClient(adminRoutes):
+    client = _adminClient(adminRoutes)
+    client.environ_base["HTTP_X_ADMIN_TOKEN"] = ADMIN_TOKEN
+    return client
+
+
+@pytest.fixture
+def anonAdminClient(adminRoutes):
+    return _adminClient(adminRoutes)
