@@ -3,6 +3,8 @@
 config/secrets.json
 app/config/secrets.json
 server/prideAdminConfig.json
+# The owner's own domain and host names, for check-public.ps1 only
+tools/check-public.local.txt
 
 # Importer working data
 importer/cache/

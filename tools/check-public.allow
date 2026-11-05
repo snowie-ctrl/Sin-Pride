@@ -1,0 +1,5 @@
+# Exact strings check-public.ps1 may meet in the tree: public values that only look like tokens.
+# free-exercise-db's pinned commit (importer/sources.json, importer/README.md)
+f00c92c7dcf1216a928a52c3706c7ce8e2f71ed5
+# The spec's own words for what the check looks for (§10)
+user@host
