@@ -42,3 +42,7 @@ pride_test(tst_catalog
             ../services/ExerciseStore.h ../services/ExerciseStore.cpp
             ../services/Catalog.h ../services/Catalog.cpp
     LIBS Qt6::Network Qt6::Gui Qt6::Qml)
+
+pride_test(tst_preferences
+    SOURCES tst_preferences.cpp ../assets/Preferences.h ../assets/Preferences.cpp
+    LIBS Qt6::Gui)
