@@ -310,6 +310,7 @@ Ctrl+K searches the catalog from anywhere.
   - a week strip of planned and done days (never "missed")
   - the latest crowns
   - With no program yet: a card offering the intro or an empty program.
+  - Layout: T1 (Throne) from the milestone 1 mockups: a full-width hero Next up card with the routine name in the heading face and the exercises as rows with their targets, the suggestion as a gold chip inline on its row and "Log this workout" at the card's foot; below the card, the week strip, then the crowns row.
 - **Programs:** a person's programs with the active one marked; create, rename, duplicate, delete, activate.
   - Inside a program: routines in rotation order (drag to reorder) and the planned-weekday chips.
 - **Routine editor:** one row per item, dragged into order: exercise, sets, rep range (or target time or distance), target weight, rest, note.
@@ -325,6 +326,7 @@ Ctrl+K searches the catalog from anywhere.
   - Sets and exercises can be added or removed, and sets marked as warm-ups.
   - Saving shows the **result card** (new crowns, new suggestions, the next up after this).
   - Past workouts open in the same page for editing, or to delete with a confirmation.
+  - Layout: L2 (Cards) from the milestone 1 mockups: each exercise is a card with its sets as editable chips ("135 × 12"); clicking a chip edits it in place, "+" adds a set, and Save is in a sticky footer.
 - **Progress:**
   - a chart per exercise (best set, estimated one-rep max, volume; choose the exercise from a list of those logged)
   - records
@@ -343,8 +345,12 @@ Ctrl+K searches the catalog from anywhere.
 **"Superbia":** violet into royal purple, gold accents for crowns and
 suggestions, on a near-black ink ground. Tokens live in `Preferences`, are
 resettable, and follow Gluttony's token names.
-- **Starting values** (final ones are picked from the milestone 1 mockups): ink `#0E0B14`, surface `#1A1424`, violet `#6B3FD9`, royal `#8E5CF5`, gold `#E3B341`, text `#EDE7F6`.
-- **Fonts:** the heading face is chosen in the same mockups from fonts under the SIL Open Font License, bundled with their licence. Body text uses a system face, as Gluttony does.
+- **Values** (picked by the owner 2026-11-05 from the milestone 1 mockups, palette P1), by their `Preferences` names:
+  `backgroundPrimary #0E0B14` (ink), `backgroundSecondary #1A1424` (surface), `backgroundTertiary #251C33`,
+  `surfaceArt #120E19`, `accentColor #8E5CF5` (royal), `accentDeep #6B3FD9` (violet), `accentSubtle #2B1F45`,
+  `goldColor #E3B341`, `borderColor #2F2542`, `textPrimary #EDE7F6`, `textSecondary #C4B8DA`,
+  `textMuted #8A7FA0`, `dangerColor #E5484D`, `successColor #4FBF8B`.
+- **Fonts:** Headings use Cinzel (SIL Open Font License), bundled with its licence. Body text uses Segoe UI.
 - **The icon:** the owner's violet crown on black (`prideAppIcon.png`, from the owner's sin app logos). It is committed to `app/assets/icons/`, with a Windows `.ico` made from it.
 
 **The voice** is proud, with a wink, and never shaming:
@@ -460,4 +466,4 @@ Each milestone is planned and built in its own fresh session.
 
 - A LICENSE file: none means all rights reserved, as in Gluttony.
 - Creating the tunnel hostname before milestone 4, as for Gluttony.
-- The final colours, heading font and layouts, picked from the milestone 1 mockups.
+- Decided 2026-11-05: palette P1 (the starting values), Cinzel for headings, Today layout T1 (Throne) and Log a workout layout L2 (Cards), from the milestone 1 mockups.
