@@ -1,0 +1,11 @@
+[
+  {
+    "name": "free-exercise-db",
+    "repo": "yuhonas/free-exercise-db",
+    "commit": "f00c92c7dcf1216a928a52c3706c7ce8e2f71ed5",
+    "licence": "Unlicense",
+    "data": "dist/exercises.json",
+    "pictures": "exercises",
+    "_about": "Public domain (the Unlicense; see importer/README.md). Pinned to a commit so every run reads the same content: move the pin by hand, after reading what changed upstream."
+  }
+]
