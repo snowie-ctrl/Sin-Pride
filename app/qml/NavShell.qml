@@ -16,7 +16,7 @@ Rectangle {
     property string lastListPage: "catalog-page"
 
     // Each page adds its own entry here.
-    readonly property var pageComponents: ({ "catalog-page": catalogPage })
+    readonly property var pageComponents: ({ "catalog-page": catalogPage, "exercise-page": exercisePage })
     readonly property string startPage: root.pageComponents[Nav.currentPage] !== undefined ? Nav.currentPage : "catalog-page"
 
     Component.onCompleted: {
@@ -37,6 +37,7 @@ Rectangle {
     }
 
     Component { id: catalogPage; CatalogPage {} }
+    Component { id: exercisePage; ExercisePage { onBackRequested: Nav.navigateTo(root.lastListPage) } }
 
     Rectangle {
         id: rail
@@ -83,6 +84,13 @@ Rectangle {
         // Above the page, so the search's list (Task 19) lies over it.
         z: 2
         color: Preferences.backgroundPrimary
+
+        QuickSearch {
+            x: Preferences.spacingLarge
+            anchors.verticalCenter: parent.verticalCenter
+            width: 520
+            height: 40
+        }
     }
 
     Rectangle {

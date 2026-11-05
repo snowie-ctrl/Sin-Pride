@@ -57,6 +57,8 @@ qt_add_qml_module(pride_ui
         qml/NavShell.qml
         qml/pages/LoginPage.qml
         qml/pages/CatalogPage.qml
+        qml/pages/ExercisePage.qml
+        qml/component/QuickSearch.qml
         qml/component/TintedIcon.qml
         qml/component/ActionButton.qml
         qml/component/InputField.qml

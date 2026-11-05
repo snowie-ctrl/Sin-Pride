@@ -398,6 +398,108 @@ private slots:
         QCOMPARE(countVisible("picturePlaceholder"), 2);
         QVERIFY(QFile::exists(dataDir + "/catalog/pictures/" + pictureOne));
     }
+
+    // ---- The Exercise page and Ctrl+K ----
+
+    void aTileOpensItsExercise()
+    {
+        startSignedIn();
+        click(find("catalogFilterField"));
+        type("curl");
+        QTRY_COMPARE(countVisible("exerciseTile"), 1);
+        click(find("exerciseTile"));
+        QTRY_VERIFY(findVisible("exercisePage"));
+        QCOMPARE(find("exerciseName")->property("text").toString(), QStringLiteral("Barbell Curl"));
+        QCOMPARE(find("exercisePrimary")->property("text").toString(), QStringLiteral("Biceps"));
+        QCOMPARE(find("exerciseSecondary")->property("text").toString(), QStringLiteral("Forearms"));
+        QCOMPARE(find("exerciseEquipment")->property("text").toString(), QStringLiteral("Barbell"));
+        QCOMPARE(countVisible("exerciseStep"), 3);
+        QVERIFY(find("exerciseCredit")->property("text").toString().contains(QStringLiteral("public domain")));
+        QVERIFY(!findVisible("exerciseGone"));
+    }
+
+    void theSecondPictureIsOneClickAway()
+    {
+        startSignedIn();
+        catalog->open(1);
+        nav->navigateTo("exercise-page");
+        QTRY_VERIFY(findVisible("pictureChip1"));
+        QCOMPARE(find("exercisePicture")->property("name").toString(), pictureOne);
+        click(find("pictureChip1"));
+        QTRY_COMPARE(find("exercisePicture")->property("name").toString(), pictureTwo);
+    }
+
+    void anExerciseWithoutPicturesShowsThePlaceholder()
+    {
+        startSignedIn();
+        catalog->open(5);
+        nav->navigateTo("exercise-page");
+        QTRY_VERIFY(findVisible("exercisePage"));
+        QCOMPARE(find("exercisePicture")->property("name").toString(), QString());
+        QVERIFY(findIn(find("exercisePicture"), "picturePlaceholder", true));
+        QVERIFY(!findVisible("pictureChip0"));
+        QVERIFY(findVisible("exerciseNoSteps"));
+        QVERIFY(!findVisible("exerciseSecondary"));
+    }
+
+    void anExerciseThatLeftTheCatalogStillOpensAndSaysSo()
+    {
+        startSignedIn();
+        catalog->open(9);
+        nav->navigateTo("exercise-page");
+        QTRY_VERIFY(findVisible("exerciseGone"));
+        QCOMPARE(find("exerciseName")->property("text").toString(), QStringLiteral("Old Row"));
+    }
+
+    void anExerciseNotInTheCatalogSaysSo()
+    {
+        startSignedIn();
+        catalog->open(999);
+        nav->navigateTo("exercise-page");
+        QTRY_VERIFY(findVisible("exerciseMissing"));
+        QVERIFY(!findVisible("exerciseName"));
+        QVERIFY(findVisible("exerciseBack"));
+    }
+
+    void backReturnsToTheCatalog()
+    {
+        startSignedIn();
+        click(find("chip-equipment-barbell"));
+        QTRY_COMPARE(countVisible("exerciseTile"), 1);
+        click(find("exerciseTile"));
+        QTRY_VERIFY(findVisible("exercisePage"));
+        click(find("exerciseBack"));
+        QTRY_VERIFY(findVisible("catalogPage"));
+        // The filters are as they were left.
+        QTRY_COMPARE(countVisible("exerciseTile"), 1);
+    }
+
+    void ctrlKFindsAnExerciseAndEnterOpensIt()
+    {
+        startSignedIn();
+        QTest::keyClick(window(), Qt::Key_K, Qt::ControlModifier);
+        QTRY_VERIFY(find("quickSearchField")->hasActiveFocus());
+        type("pull");
+        QTRY_VERIFY(findVisible("quickSearchRow"));
+        QCOMPARE(countVisible("quickSearchRow"), 1);
+        QTest::keyClick(window(), Qt::Key_Return);
+        QTRY_VERIFY(findVisible("exercisePage"));
+        QCOMPARE(find("exerciseName")->property("text").toString(), QStringLiteral("Pullups"));
+        QVERIFY(!findVisible("quickSearchResults"));
+    }
+
+    void ctrlKWithNoMatchSaysSoAndEscapeCloses()
+    {
+        startSignedIn();
+        QTest::keyClick(window(), Qt::Key_K, Qt::ControlModifier);
+        QTRY_VERIFY(find("quickSearchField")->hasActiveFocus());
+        type("row");
+        // Old Row has left the catalog, so nothing is found.
+        QTRY_VERIFY(findVisible("quickSearchNothing"));
+        QTest::keyClick(window(), Qt::Key_Escape);
+        QTRY_VERIFY(!findVisible("quickSearchResults"));
+        QCOMPARE(find("quickSearchField")->property("text").toString(), QString());
+    }
 };
 
 QTEST_MAIN(TestPages)
