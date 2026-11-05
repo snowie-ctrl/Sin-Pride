@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+import adminApi
 import config
 import net
 
@@ -21,6 +22,8 @@ def noNetwork(monkeypatch):
         raise RuntimeError("tests must not touch the network")
     monkeypatch.setattr(net._session, "get", refuse)
     monkeypatch.setattr(net._session, "request", refuse)
+    monkeypatch.setattr(adminApi._http, "request", refuse)
+    monkeypatch.setattr(adminApi.time, "sleep", lambda seconds: None)
     monkeypatch.setattr(net.time, "sleep", lambda seconds: None)
 
 
