@@ -1,0 +1,342 @@
+{
+ "version": "fixture-1",
+ "exercises": [
+  {
+   "id": 1,
+   "source": "free-exercise-db",
+   "removed": false,
+   "key": "Barbell_Curl",
+   "name": "Barbell Curl",
+   "category": "strength",
+   "level": "beginner",
+   "measure": "weight_reps",
+   "region": "upper",
+   "licence": "Unlicense",
+   "primary": [
+    "biceps"
+   ],
+   "secondary": [
+    "forearms"
+   ],
+   "equipment": [
+    "barbell"
+   ],
+   "steps": [
+    "Stand up with your torso upright while holding a barbell at a shoulder-width grip. The palm of your hands should be facing forward and the elbows should be close to the torso. This will be your starting position.",
+    "While holding the upper arms stationary, curl the weights forward while contracting the biceps as you breathe out. Tip: Only the forearms should move.",
+    "Continue the movement until your biceps are fully contracted and the bar is at shoulder level. Hold the contracted position for a second and squeeze the biceps hard.",
+    "Slowly begin to bring the bar back to starting position as your breathe in.",
+    "Repeat for the recommended amount of repetitions."
+   ],
+   "pictures": [
+    "67c6fa2fff9cf05bec79.jpg",
+    "ebabc26ac586e9dea0fe.jpg"
+   ]
+  },
+  {
+   "id": 2,
+   "source": "free-exercise-db",
+   "removed": false,
+   "key": "Barbell_Squat",
+   "name": "Barbell Squat",
+   "category": "strength",
+   "level": "beginner",
+   "measure": "weight_reps",
+   "region": "lower",
+   "licence": "Unlicense",
+   "primary": [
+    "quadriceps"
+   ],
+   "secondary": [
+    "calves",
+    "glutes",
+    "hamstrings",
+    "lower back"
+   ],
+   "equipment": [
+    "barbell"
+   ],
+   "steps": [
+    "This exercise is best performed inside a squat rack for safety purposes. To begin, first set the bar on a rack to just below shoulder level. Once the correct height is chosen and the bar is loaded, step under the bar and place the back of your shoulders (slightly below the neck) across it.",
+    "Hold on to the bar using both arms at each side and lift it off the rack by first pushing with your legs and at the same time straightening your torso.",
+    "Step away from the rack and position your legs using a shoulder width medium stance with the toes slightly pointed out. Keep your head up at all times and also maintain a straight back. This will be your starting position. (Note: For the purposes of this discussion we will use the medium stance described above which targets overall development; however you can choose any of the three stances discussed in the foot stances section).",
+    "Begin to slowly lower the bar by bending the knees and hips as you maintain a straight posture with the head up. Continue down until the angle between the upper leg and the calves becomes slightly less than 90-degrees. Inhale as you perform this portion of the movement. Tip: If you performed the exercise correctly, the front of the knees should make an imaginary straight line with the toes that is perpendicular to the front. If your knees are past that imaginary line (if they are past your toes) then you are placing undue stress on the knee and the exercise has been performed incorrectly.",
+    "Begin to raise the bar as you exhale by pushing the floor with the heel of your foot as you straighten the legs again and go back to the starting position.",
+    "Repeat for the recommended amount of repetitions."
+   ],
+   "pictures": [
+    "def89b5029286ae93b85.jpg",
+    "69a9a40f81e6174d9354.jpg"
+   ]
+  },
+  {
+   "id": 3,
+   "source": "free-exercise-db",
+   "removed": false,
+   "key": "Dumbbell_Bench_Press",
+   "name": "Dumbbell Bench Press",
+   "category": "strength",
+   "level": "beginner",
+   "measure": "weight_reps",
+   "region": "upper",
+   "licence": "Unlicense",
+   "primary": [
+    "chest"
+   ],
+   "secondary": [
+    "shoulders",
+    "triceps"
+   ],
+   "equipment": [
+    "dumbbell",
+    "bench"
+   ],
+   "steps": [
+    "Lie down on a flat bench with a dumbbell in each hand resting on top of your thighs. The palms of your hands will be facing each other.",
+    "Then, using your thighs to help raise the dumbbells up, lift the dumbbells one at a time so that you can hold them in front of you at shoulder width.",
+    "Once at shoulder width, rotate your wrists forward so that the palms of your hands are facing away from you. The dumbbells should be just to the sides of your chest, with your upper arm and forearm creating a 90 degree angle. Be sure to maintain full control of the dumbbells at all times. This will be your starting position.",
+    "Then, as you breathe out, use your chest to push the dumbbells up. Lock your arms at the top of the lift and squeeze your chest, hold for a second and then begin coming down slowly. Tip: Ideally, lowering the weight should take about twice as long as raising it.",
+    "Repeat the movement for the prescribed amount of repetitions of your training program."
+   ],
+   "pictures": [
+    "7c2c9bd16ed585346987.jpg",
+    "a7321e6b76573e456a4e.jpg"
+   ]
+  },
+  {
+   "id": 4,
+   "source": "free-exercise-db",
+   "removed": false,
+   "key": "Hamstring_Stretch",
+   "name": "Hamstring Stretch",
+   "category": "stretching",
+   "level": "beginner",
+   "measure": "time",
+   "region": "lower",
+   "licence": "Unlicense",
+   "primary": [
+    "hamstrings"
+   ],
+   "secondary": [],
+   "equipment": [
+    "bodyweight"
+   ],
+   "steps": [
+    "Lie on your back with one leg extended above you, with the hip at ninety degrees. Keep the other leg flat on the floor.",
+    "Loop a belt, band, or rope over the ball of your foot. This will be your starting position.",
+    "Pull on the belt to create tension in the calves and hamstrings. Hold this stretch for 10-30 seconds, and repeat with the other leg."
+   ],
+   "pictures": [
+    "fd38b386f7d1b071f25f.jpg",
+    "6d33b3f6d550c8ee8d2f.jpg"
+   ]
+  },
+  {
+   "id": 5,
+   "source": "free-exercise-db",
+   "removed": false,
+   "key": "Kettlebell_Halo",
+   "name": "Kettlebell Halo",
+   "category": "strength",
+   "level": "beginner",
+   "measure": "weight_reps",
+   "region": "upper",
+   "licence": "Unlicense",
+   "primary": [
+    "shoulders"
+   ],
+   "secondary": [
+    "traps",
+    "middle back",
+    "abdominals",
+    "triceps"
+   ],
+   "equipment": [
+    "kettlebell"
+   ],
+   "steps": [
+    "Stand tall with your feet hip-width apart. Hold a kettlebell upside down by the horns, with the bell above your hands and close to your chest. Brace your abdominals and squeeze your glutes so your ribcage stays down. This is your starting position.",
+    "Keeping your elbows close to your head, move the kettlebell up past one ear and around behind your head.",
+    "Continue the circle past the opposite ear and back down to the starting position in front of your chest, letting the bell pass close to your body throughout.",
+    "Complete the prescribed number of circles in one direction, then repeat the same number in the opposite direction.",
+    "Move slowly and keep your head, hips and lower back still. If your lower back arches or the bell drifts far from your head, use a lighter weight."
+   ],
+   "pictures": []
+  },
+  {
+   "id": 6,
+   "source": "free-exercise-db",
+   "removed": false,
+   "key": "Plank",
+   "name": "Plank",
+   "category": "strength",
+   "level": "beginner",
+   "measure": "time",
+   "region": "full",
+   "licence": "Unlicense",
+   "primary": [
+    "abdominals"
+   ],
+   "secondary": [],
+   "equipment": [
+    "bodyweight"
+   ],
+   "steps": [
+    "Get into a prone position on the floor, supporting your weight on your toes and your forearms. Your arms are bent and directly below the shoulder.",
+    "Keep your body straight at all times, and hold this position as long as possible. To increase difficulty, an arm or leg can be raised."
+   ],
+   "pictures": [
+    "9ef0587e926002902ee0.jpg",
+    "ef715e8181e9083f12de.jpg"
+   ]
+  },
+  {
+   "id": 7,
+   "source": "free-exercise-db",
+   "removed": false,
+   "key": "Pullups",
+   "name": "Pullups",
+   "category": "strength",
+   "level": "beginner",
+   "measure": "reps",
+   "region": "upper",
+   "licence": "Unlicense",
+   "primary": [
+    "lats"
+   ],
+   "secondary": [
+    "biceps",
+    "middle back"
+   ],
+   "equipment": [
+    "bodyweight",
+    "pull-up bar"
+   ],
+   "steps": [
+    "Grab the pull-up bar with the palms facing forward using the prescribed grip. Note on grips: For a wide grip, your hands need to be spaced out at a distance wider than your shoulder width. For a medium grip, your hands need to be spaced out at a distance equal to your shoulder width and for a close grip at a distance smaller than your shoulder width.",
+    "As you have both arms extended in front of you holding the bar at the chosen grip width, bring your torso back around 30 degrees or so while creating a curvature on your lower back and sticking your chest out. This is your starting position.",
+    "Pull your torso up until the bar touches your upper chest by drawing the shoulders and the upper arms down and back. Exhale as you perform this portion of the movement. Tip: Concentrate on squeezing the back muscles once you reach the full contracted position. The upper torso should remain stationary as it moves through space and only the arms should move. The forearms should do no other work other than hold the bar.",
+    "After a second on the contracted position, start to inhale and slowly lower your torso back to the starting position when your arms are fully extended and the lats are fully stretched.",
+    "Repeat this motion for the prescribed amount of repetitions."
+   ],
+   "pictures": [
+    "8f77c49300fedb7a95fa.jpg",
+    "12281e811cd0baddea3d.jpg"
+   ]
+  },
+  {
+   "id": 8,
+   "source": "free-exercise-db",
+   "removed": false,
+   "key": "Pushups",
+   "name": "Pushups",
+   "category": "strength",
+   "level": "beginner",
+   "measure": "reps",
+   "region": "upper",
+   "licence": "Unlicense",
+   "primary": [
+    "chest"
+   ],
+   "secondary": [
+    "shoulders",
+    "triceps"
+   ],
+   "equipment": [
+    "bodyweight"
+   ],
+   "steps": [
+    "Lie on the floor face down and place your hands about 36 inches apart while holding your torso up at arms length.",
+    "Next, lower yourself downward until your chest almost touches the floor as you inhale.",
+    "Now breathe out and press your upper body back up to the starting position while squeezing your chest.",
+    "After a brief pause at the top contracted position, you can begin to lower yourself downward again for as many repetitions as needed."
+   ],
+   "pictures": [
+    "65598090b296abe568af.jpg",
+    "3143f0c34b25c53aaae4.jpg"
+   ]
+  },
+  {
+   "id": 9,
+   "source": "free-exercise-db",
+   "removed": false,
+   "key": "Rope_Jumping",
+   "name": "Rope Jumping",
+   "category": "cardio",
+   "level": "intermediate",
+   "measure": "time",
+   "region": "lower",
+   "licence": "Unlicense",
+   "primary": [
+    "quadriceps"
+   ],
+   "secondary": [
+    "calves",
+    "hamstrings"
+   ],
+   "equipment": [
+    "other"
+   ],
+   "steps": [
+    "Hold an end of the rope in each hand. Position the rope behind you on the ground. Raise your arms up and turn the rope over your head bringing it down in front of you. When it reaches the ground, jump over it. Find a good turning pace that can be maintained. Different speeds and techniques can be used to introduce variation.",
+    "Rope jumping is exciting, challenges your coordination, and requires a lot of energy. A 150 lb person will burn about 350 calories jumping rope for 30 minutes, compared to over 450 calories running."
+   ],
+   "pictures": [
+    "0d08963e70e86faaaea2.jpg",
+    "3b1684d8542803535a6e.jpg"
+   ]
+  },
+  {
+   "id": 10,
+   "source": "free-exercise-db",
+   "removed": false,
+   "key": "Side_Bridge",
+   "name": "Side Bridge",
+   "category": "strength",
+   "level": "beginner",
+   "measure": "time",
+   "region": "full",
+   "licence": "Unlicense",
+   "primary": [
+    "abdominals"
+   ],
+   "secondary": [
+    "shoulders"
+   ],
+   "equipment": [
+    "bodyweight"
+   ],
+   "steps": [],
+   "pictures": [
+    "eca2a65395e555956e7e.jpg",
+    "7c0050dc31f8c69bc7b9.jpg"
+   ]
+  },
+  {
+   "id": 11,
+   "source": "free-exercise-db",
+   "removed": false,
+   "key": "Upper_Back_Stretch",
+   "name": "Upper Back Stretch",
+   "category": "stretching",
+   "level": "beginner",
+   "measure": "time",
+   "region": "upper",
+   "licence": "Unlicense",
+   "primary": [
+    "middle back"
+   ],
+   "secondary": [],
+   "equipment": [
+    "bodyweight"
+   ],
+   "steps": [
+    "Clasp fingers together with your thumbs pointing down, round your shoulders as you reach your hands forward."
+   ],
+   "pictures": [
+    "2e85a01171cb94d91a3f.jpg",
+    "fedb37ac1e9dcaa69ebb.jpg"
+   ]
+  }
+ ]
+}
