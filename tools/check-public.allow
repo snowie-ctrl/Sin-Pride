@@ -5,3 +5,6 @@ f00c92c7dcf1216a928a52c3706c7ce8e2f71ed5
 user@host
 # A test name in server/tests/test_session.py that only looks like a token
 test_ipv6CallersAreCountedByTheirSlash64
+# Test names in server/tests/test_auth.py that only look like tokens
+test_anUnknownUsernameIs401LikeAWrongPassword
+test_anIdThatIsNotOneIs404BeforeAnyQuery
