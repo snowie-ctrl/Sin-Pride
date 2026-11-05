@@ -8,3 +8,5 @@ test_ipv6CallersAreCountedByTheirSlash64
 # Test names in server/tests/test_auth.py that only look like tokens
 test_anUnknownUsernameIs401LikeAWrongPassword
 test_anIdThatIsNotOneIs404BeforeAnyQuery
+# A test name in app/tests/tst_api.cpp that only looks like a token
+aSignedIn401WithNoBodyStillEndsTheSession
