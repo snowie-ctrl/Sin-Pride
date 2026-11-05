@@ -60,6 +60,10 @@ qt_add_qml_module(pride_ui
         qml/component/TintedIcon.qml
         qml/component/ActionButton.qml
         qml/component/InputField.qml
+        qml/component/Chip.qml
+        qml/component/PictureFrame.qml
+        qml/component/ExerciseTile.qml
+        qml/component/FilterPanel.qml
         qml/logic/words.mjs
 )
 target_link_libraries(pride_ui PRIVATE Qt6::Quick Qt6::QuickControls2)

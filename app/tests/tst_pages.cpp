@@ -323,6 +323,81 @@ private slots:
         QTRY_VERIFY(findVisible("catalogPage"));
         QTRY_VERIFY(findVisible("offlineBanner"));
     }
+
+    // ---- The Catalog page ----
+
+    void theTilesAreTheShownCatalog()
+    {
+        startSignedIn();
+        QTRY_COMPARE(countVisible("exerciseTile"), 3);
+        QCOMPARE(find("catalogCount")->property("text").toString(), QStringLiteral("3 exercises"));
+    }
+
+    void aFilterChipNarrowsTheTilesAndResetBringsThemBack()
+    {
+        startSignedIn();
+        QTRY_VERIFY(findVisible("chip-equipment-barbell"));
+        click(find("chip-equipment-barbell"));
+        QTRY_COMPARE(countVisible("exerciseTile"), 1);
+        QCOMPARE(find("catalogCount")->property("text").toString(), QStringLiteral("1 of 3 exercises"));
+        QTRY_VERIFY(findVisible("resetFilters"));
+        click(find("resetFilters"));
+        QTRY_COMPARE(countVisible("exerciseTile"), 3);
+        QVERIFY(!findVisible("resetFilters"));
+    }
+
+    void typingNarrowsByName()
+    {
+        startSignedIn();
+        click(find("catalogFilterField"));
+        type("curl");
+        QTRY_COMPARE(countVisible("exerciseTile"), 1);
+        QCOMPARE(catalog->text(), QStringLiteral("curl"));
+    }
+
+    void nothingMatchingSaysSo()
+    {
+        startSignedIn();
+        click(find("catalogFilterField"));
+        type("zzz");
+        QTRY_VERIFY(findVisible("nothingMatches"));
+        QCOMPARE(countVisible("exerciseTile"), 0);
+    }
+
+    void anEmptyCatalogWithNoServerSaysSo()
+    {
+        // This account signed in here before, but the catalog never arrived, and now there is no server: an offline
+        // start on nothing. The page says so and offers Try again, never an empty grid with no words.
+        accounts->open(7, "stub");
+        accounts->close();
+        api->setBases(QString(), QStringLiteral("http://127.0.0.1:1/api/pride"));
+        api->setPingDelays(60000, 60000);
+        start();
+        QTRY_VERIFY_WITH_TIMEOUT(findVisible("catalogUnavailable"), 10000);
+        QVERIFY(findVisible("catalogRetry"));
+        QVERIFY(!findVisible("filterPanel"));
+        QCOMPARE(countVisible("exerciseTile"), 0);
+    }
+
+    void aPictureThatDoesNotComeShowsThePlaceholder()
+    {
+        server->statuses[path("/pictures/0123456789abcdef0123.jpg")] = 404;
+        startSignedIn();
+        QTRY_COMPARE(countVisible("exerciseTile"), 3);
+        QTRY_COMPARE(requestsTo("/pictures/0123456789abcdef0123.jpg").size(), 1);
+        QTest::qWait(200);
+        // Every tile shows the placeholder: Barbell Curl's picture failed, the other two have none.
+        QCOMPARE(countVisible("picturePlaceholder"), 3);
+    }
+
+    void aPictureThatComesReplacesThePlaceholder()
+    {
+        server->responses[path("/pictures/0123456789abcdef0123.jpg")] = pictureBytes();
+        startSignedIn();
+        QTRY_COMPARE(countVisible("picture"), 1);
+        QCOMPARE(countVisible("picturePlaceholder"), 2);
+        QVERIFY(QFile::exists(dataDir + "/catalog/pictures/" + pictureOne));
+    }
 };
 
 QTEST_MAIN(TestPages)
