@@ -70,3 +70,68 @@ def useDb(monkeypatch):
         monkeypatch.setattr(sys.modules[f"{PACKAGE}.DBUtils"], "initConnection", connect)
         return conn
     return install
+
+
+import flask  # noqa: E402
+
+SESSION = "test-session-token"
+UID = 7
+
+# The real lookup, kept before isolated() replaces it in every test, so test_session can check its SQL.
+REAL_SESSION_UID = loadModule("prideSession").sessionUID
+
+
+def _sessionFor(token):
+    return UID if token == SESSION else None
+
+
+@pytest.fixture
+def sessions():
+    return loadModule("prideSession")
+
+
+@pytest.fixture
+def routes():
+    return loadModule("prideRoutes")
+
+
+@pytest.fixture(autouse=True)
+def isolated(monkeypatch, tmp_path):
+    """Each test gets its own media folder, a faked session lookup and a fresh rate limiter, and no database."""
+    sessions = loadModule("prideSession")
+    monkeypatch.setattr(sessions, "sessionUID", _sessionFor)
+    # A fresh limiter per test, so one test's sign-ins never use up another's.
+    monkeypatch.setattr(sessions, "RATE_LIMITER", sessions.RateLimiter())
+    media = tmp_path / "media"
+    (media / "exercises").mkdir(parents=True)
+    monkeypatch.setattr(loadModule("prideCatalog"), "MEDIA_ROOT", media)
+
+
+@pytest.fixture
+def media():
+    catalog = loadModule("prideCatalog")
+    return catalog.MEDIA_ROOT / catalog.PICTURE_DIR
+
+
+def appClient(*blueprints):
+    app = flask.Flask("pride-app-tests")
+    for blueprint in blueprints:
+        app.register_blueprint(blueprint, url_prefix="/api/pride")
+    return app.test_client()
+
+
+@pytest.fixture
+def anonClient(routes):
+    return appClient(routes.prideBP)
+
+
+@pytest.fixture
+def client(anonClient):
+    anonClient.environ_base["HTTP_X_SESSION_TOKEN"] = SESSION
+    return anonClient
+
+
+@pytest.fixture
+def tunnelClient(client):
+    client.environ_base["HTTP_CF_CONNECTING_IP"] = "203.0.113.9"
+    return client

@@ -3,3 +3,5 @@
 f00c92c7dcf1216a928a52c3706c7ce8e2f71ed5
 # The spec's own words for what the check looks for (§10)
 user@host
+# A test name in server/tests/test_session.py that only looks like a token
+test_ipv6CallersAreCountedByTheirSlash64
