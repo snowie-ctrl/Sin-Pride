@@ -1,0 +1,6 @@
+{
+  "_about": "The body region from the primary muscles (spec §2). Core muscles count as neither. Upper only gives upper, lower only gives lower; both, or core alone, give full.",
+  "upper": ["biceps", "chest", "forearms", "lats", "middle back", "neck", "shoulders", "traps", "triceps"],
+  "lower": ["abductors", "adductors", "calves", "glutes", "hamstrings", "quadriceps"],
+  "core": ["abdominals", "lower back"]
+}

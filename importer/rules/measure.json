@@ -1,0 +1,7 @@
+{
+  "_about": "How each exercise is measured (spec §2). In order: a named exception (by upstream id); then the category; then reps when the exercise needs nothing beyond these; otherwise weight × reps.",
+  "exceptions": {"Plank": "time", "Side_Bridge": "time", "Rope_Jumping": "time"},
+  "byCategory": {"cardio": "distance_time", "stretching": "time"},
+  "repsWhenOnly": ["bodyweight", "pull-up bar", "bench"],
+  "default": "weight_reps"
+}

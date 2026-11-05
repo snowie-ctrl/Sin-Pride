@@ -1,0 +1,5 @@
+{
+  "_about": "free-exercise-db's categories and levels that Pride knows; server/prideCatalog.py lists the same, and a test keeps them in step. A new word upstream stops the import until both lists learn it.",
+  "categories": ["strength", "stretching", "plyometrics", "strongman", "powerlifting", "cardio", "olympic weightlifting"],
+  "levels": ["beginner", "intermediate", "expert"]
+}
