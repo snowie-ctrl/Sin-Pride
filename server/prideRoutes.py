@@ -204,3 +204,39 @@ def removeDevice(wanted):
         cur.execute("DELETE FROM Devices WHERE UserID = %s AND Fingerprint = %s", (uid, fingerprint))
         conn.commit()
     return ok()
+
+
+# ---- The catalog ----
+
+@prideBP.route("/catalog", methods=["GET"])
+def wholeCatalog():
+    """The whole catalog, or "unchanged" when the app already holds this version. It is read in one transaction
+    (InnoDB's consistent read), so the version and the rows always agree even while an import runs."""
+    asked = (request.args.get("version") or "")[:64]
+    with database() as (conn, cur):
+        cur.execute("SELECT Version FROM CatalogVersion WHERE Id = 1")
+        row = cur.fetchone()
+        version = row["Version"] if row else None
+        if version is not None and asked == version:
+            return ok({"version": version, "unchanged": True})
+        cur.execute(catalog.EXERCISES_QUERY)
+        rows = cur.fetchall()
+        children = {}
+        for name, sql in catalog.CHILD_QUERIES:
+            cur.execute(sql)
+            children[name] = cur.fetchall()
+    return ok({"version": version, "exercises": catalog.exercisesJson(rows, children)})
+
+
+@prideBP.route("/pictures/<name>", methods=["GET"])
+def picture(name):
+    """An exercise's picture. It is named by its content, so the name alone says which file, and the pattern keeps
+    the name inside the folder; no database is needed."""
+    if not catalog.PICTURE_NAME.fullmatch(name):
+        return fail("no picture", 404)
+    target = catalog.MEDIA_ROOT / catalog.PICTURE_DIR / name
+    if not target.is_file():
+        return fail("no picture", 404)
+    response = send_file(target, mimetype="image/jpeg", conditional=True, max_age=86400)
+    response.headers["Cache-Control"] = "private, max-age=86400"
+    return response
