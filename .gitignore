@@ -1,0 +1,28 @@
+# Secrets and machine-local config
+.env
+config/secrets.json
+app/config/secrets.json
+server/prideAdminConfig.json
+
+# Importer working data
+importer/cache/
+importer/reports/
+
+# Python
+__pycache__/
+.venv/
+.pytest_cache/
+
+# Qt builds
+build/
+*.user
+
+# Local working areas
+.worktrees/
+.superpowers/
+
+# The stub's catalog snapshot
+app/tests/stub/snapshot/
+
+# Build plans stay local; the public repository carries the specs and the API contract
+docs/superpowers/plans/
