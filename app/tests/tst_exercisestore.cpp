@@ -284,6 +284,31 @@ private slots:
         QTRY_VERIFY(!store.pictureUrl(pictureA).isEmpty());
     }
 
+    void aPictureTheTunnelCouldNotServeIsAskedAgainOnceTheServerIsBack()
+    {
+        QTemporaryDir data;
+        FakeServer server;
+        const QString path = "/api/pride/pictures/" + pictureA;
+        server.statuses[path] = 502;
+        server.responses[path] = "<html>bad gateway</html>";
+        Api api;
+        api.setBases(QString(), baseOf(server));
+        api.setPingDelays(60000, 60000);
+        ExerciseStore store(api, data.path());
+
+        store.pictureUrl(pictureA);
+        QTRY_COMPARE(requestsTo(server, path), 1);
+        QTRY_VERIFY(!api.online());
+
+        server.statuses.remove(path);
+        server.responses[path] = pictureBytes();
+        api.checkNow();
+        QTRY_VERIFY(api.online());
+        // Whatever shows the picture asks again, and this time it is kept.
+        QTRY_VERIFY(!store.pictureUrl(pictureA).isEmpty());
+        QCOMPARE(requestsTo(server, path), 2);
+    }
+
     void picturesNoExerciseNamesAreDeletedWhenTheCatalogChanges()
     {
         QTemporaryDir data;

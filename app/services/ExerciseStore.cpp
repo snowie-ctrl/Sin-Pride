@@ -204,8 +204,8 @@ void ExerciseStore::fetchNext()
                         emit picturesChanged();
                     }
                 }
-            } else if (status == 0) {
-                // Nothing answered: asked again later (when another picture lands, or the server is back).
+            } else if (status == 0 || Api::originDown(status)) {
+                // Nothing answered, or the tunnel answered with its own page for a server that is down: asked again later (when another picture lands, or the server is back).
                 m_asked.remove(name);
                 m_api.noteUnreachable(url);
             }
