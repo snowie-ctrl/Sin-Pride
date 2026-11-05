@@ -35,6 +35,14 @@ def test_aWrongTokenIsRefused(anonAdminClient):
     assert anonAdminClient.get(f"{B}/state").status_code == 401
 
 
+def test_aRequestThroughTheTunnelIsRefusedEvenWithTheToken(adminClient, useDb):
+    conn = useDb(fetchone=[{"Version": "b" * 40}], fetchall=[[]])
+    adminClient.environ_base["HTTP_CF_CONNECTING_IP"] = "203.0.113.9"
+    assert adminClient.get(f"{B}/state").status_code == 404
+    assert adminClient.post(f"{B}/import", json=samples.batch()).status_code == 404
+    assert conn.cur.executed == []
+
+
 # ---- state and pictures ----
 
 def test_stateListsEveryCatalogRow(adminClient, useDb):
@@ -141,6 +149,9 @@ def test_aNewExerciseIsInsertedWithItsChildren(adminClient, useDb, media, catalo
     assert conn.cur.statements("INSERT INTO ExerciseSteps")[0][1] == [41, 1, "Stand up straight.", 41, 2, "Curl the bar."]
     assert conn.cur.statements("INSERT INTO ExercisePictures")[0][1] == [41, 0, samples.PICTURE]
     assert conn.cur.statements("INSERT INTO CatalogVersion")[0][1] == (result["version"],)
+    # The version hashes every catalog row, hidden ones included: no filter on RemovedAt or Source.
+    versionSelect = conn.cur.statements("SELECT Source, SourceKey, ContentHash, RemovedAt FROM Exercises")[0][0]
+    assert versionSelect.endswith("WHERE OwnerUserID IS NULL")
     assert conn.commits == 1
 
 
@@ -158,6 +169,7 @@ def test_aChangedExerciseIsUpdatedAndItsChildrenReplaced(adminClient, useDb, med
     conn = useDb(fetchall=[[stored("Barbell_Curl", 41, hash="0" * 40)], versionRows("Barbell_Curl")])
     result = adminClient.post(f"{B}/import", json=samples.batch()).get_json()
     assert result["changed"] == 1
+    assert not conn.cur.statements("INSERT INTO Exercises"), "a changed exercise keeps its ExerciseID"
     update = conn.cur.statements("UPDATE Exercises SET Licence")[0]
     assert "RemovedAt = NULL" in update[0] and update[1][-1] == 41
     sqls = [sql for sql, _ in conn.cur.executed]
@@ -170,6 +182,7 @@ def test_aHiddenExerciseThatReturnsIsShownAgain(adminClient, useDb, media):
     (media / samples.PICTURE).write_bytes(samples.JPEG)
     conn = useDb(fetchall=[[stored("Barbell_Curl", 41, removed="2026-11-01")], versionRows("Barbell_Curl")])
     assert adminClient.post(f"{B}/import", json=samples.batch()).get_json()["changed"] == 1
+    assert not conn.cur.statements("INSERT INTO Exercises"), "a returning exercise keeps its ExerciseID"
     assert "RemovedAt = NULL" in conn.cur.statements("UPDATE Exercises SET Licence")[0][0]
 
 

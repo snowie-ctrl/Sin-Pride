@@ -15,7 +15,7 @@ from pathlib import Path
 
 from flask import Blueprint, jsonify, request
 
-from . import DBUtils, prideCatalog as catalog
+from . import DBUtils, prideCatalog as catalog, prideSession as session
 
 prideAdminBP = Blueprint("prideAdmin", __name__)
 
@@ -43,6 +43,10 @@ def adminToken():
 
 @prideAdminBP.before_request
 def requireAdminToken():
+    # LAN only is enforced here too, not just by the tunnel's nginx: anything the tunnel carries has CF-Connecting-IP,
+    # and is answered as if this prefix did not exist.
+    if session.isPublicRequest():
+        return jsonify({"status": "error", "message": "not found"}), 404
     expected = adminToken()
     given = request.headers.get("X-Admin-Token", "")
     if not expected or not hmac.compare_digest(given.encode(), expected.encode()):
