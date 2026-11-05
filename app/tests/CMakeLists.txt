@@ -46,3 +46,14 @@ pride_test(tst_catalog
 pride_test(tst_preferences
     SOURCES tst_preferences.cpp ../assets/Preferences.h ../assets/Preferences.cpp
     LIBS Qt6::Gui)
+
+pride_test(tst_pages
+    SOURCES tst_pages.cpp FakeServer.h ../assets/resources.qrc
+            ../assets/Preferences.h ../assets/Preferences.cpp
+            ${PRIDE_API} ../api/AuthNetworkFactory.h
+            ../services/Nav.h ../services/AccountStore.h ../services/AccountStore.cpp
+            ../services/Session.h ../services/Session.cpp
+            ../services/ExerciseStore.h ../services/ExerciseStore.cpp
+            ../services/Catalog.h ../services/Catalog.cpp
+            ../services/Wiring.h ../services/Wiring.cpp
+    LIBS Qt6::Network Qt6::Gui Qt6::Quick Qt6::QuickControls2 pride_uiplugin)
