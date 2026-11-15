@@ -40,7 +40,7 @@ def test_anIsoDateReads(value):
     assert checks.isoDate(value) == date.fromisoformat(value)
 
 
-@pytest.mark.parametrize("value", [None, "", "15/11/2026", "2026-13-01", "2026-11-15T00:00:00"])
+@pytest.mark.parametrize("value", [None, "", "15/11/2026", "2026-13-01", "2026-11-15T00:00:00", "2026-W46-1"])
 def test_aBadDateIsRefused(value):
     assert refused(checks.isoDate, value) == "date"
 

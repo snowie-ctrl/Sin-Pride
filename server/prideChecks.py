@@ -5,6 +5,7 @@ mirrors these limits. A check returns the cleaned value or raises Refusal naming
 400 {status:"error", field, message}.
 """
 import math
+import re
 from datetime import date
 
 try:
@@ -92,7 +93,8 @@ def idList(value, field="order"):
 
 def isoDate(value, field="date"):
     try:
-        if not isinstance(value, str) or len(value) != 10:
+        # date.fromisoformat also reads week dates such as 2026-W46-1 (Python 3.11+); only YYYY-MM-DD is the contract.
+        if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
             raise ValueError
         return date.fromisoformat(value)
     except ValueError:
