@@ -1,0 +1,10 @@
+<RCC>
+    <qresource prefix="/">
+        <file>qtquickcontrols2.conf</file>
+        <file>fonts/Cinzel/Cinzel.ttf</file>
+        <file>icons/prideAppIcon.png</file>
+        <file>images/catalog.svg</file>
+        <file>images/signout.svg</file>
+        <file>images/back.svg</file>
+    </qresource>
+</RCC>

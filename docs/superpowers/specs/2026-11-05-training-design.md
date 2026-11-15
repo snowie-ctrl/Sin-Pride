@@ -310,6 +310,7 @@ Ctrl+K searches the catalog from anywhere.
   - a week strip of planned and done days (never "missed")
   - the latest crowns
   - With no program yet: a card offering the intro or an empty program.
+  - Layout: T1 (Throne) from the milestone 1 mockups: a full-width hero Next up card with the routine name in the heading face and the exercises as rows with their targets, the suggestion as a gold chip inline on its row and "Log this workout" at the card's foot; below the card, the week strip, then the crowns row.
 - **Programs:** a person's programs with the active one marked; create, rename, duplicate, delete, activate.
   - Inside a program: routines in rotation order (drag to reorder) and the planned-weekday chips.
 - **Routine editor:** one row per item, dragged into order: exercise, sets, rep range (or target time or distance), target weight, rest, note.
@@ -325,6 +326,7 @@ Ctrl+K searches the catalog from anywhere.
   - Sets and exercises can be added or removed, and sets marked as warm-ups.
   - Saving shows the **result card** (new crowns, new suggestions, the next up after this).
   - Past workouts open in the same page for editing, or to delete with a confirmation.
+  - Layout: L2 (Cards) from the milestone 1 mockups: each exercise is a card with its sets as editable chips ("135 × 12"); clicking a chip edits it in place, "+" adds a set, and Save is in a sticky footer.
 - **Progress:**
   - a chart per exercise (best set, estimated one-rep max, volume; choose the exercise from a list of those logged)
   - records
@@ -343,8 +345,12 @@ Ctrl+K searches the catalog from anywhere.
 **"Superbia":** violet into royal purple, gold accents for crowns and
 suggestions, on a near-black ink ground. Tokens live in `Preferences`, are
 resettable, and follow Gluttony's token names.
-- **Starting values** (final ones are picked from the milestone 1 mockups): ink `#0E0B14`, surface `#1A1424`, violet `#6B3FD9`, royal `#8E5CF5`, gold `#E3B341`, text `#EDE7F6`.
-- **Fonts:** the heading face is chosen in the same mockups from fonts under the SIL Open Font License, bundled with their licence. Body text uses a system face, as Gluttony does.
+- **Values** (picked by the owner 2026-11-05 from the milestone 1 mockups, palette P1), by their `Preferences` names:
+  `backgroundPrimary #0E0B14` (ink), `backgroundSecondary #1A1424` (surface), `backgroundTertiary #251C33`,
+  `surfaceArt #120E19`, `accentColor #8E5CF5` (royal), `accentDeep #6B3FD9` (violet), `accentSubtle #2B1F45`,
+  `goldColor #E3B341`, `borderColor #2F2542`, `textPrimary #EDE7F6`, `textSecondary #C4B8DA`,
+  `textMuted #8A7FA0`, `dangerColor #E5484D`, `successColor #4FBF8B`.
+- **Fonts:** Headings use Cinzel (SIL Open Font License), bundled with its licence. Body text uses Segoe UI.
 - **The icon:** the owner's violet crown on black (`prideAppIcon.png`, from the owner's sin app logos). It is committed to `app/assets/icons/`, with a Windows `.ico` made from it.
 
 **The voice** is proud, with a wink, and never shaming:
@@ -460,4 +466,38 @@ Each milestone is planned and built in its own fresh session.
 
 - A LICENSE file: none means all rights reserved, as in Gluttony.
 - Creating the tunnel hostname before milestone 4, as for Gluttony.
-- The final colours, heading font and layouts, picked from the milestone 1 mockups.
+- Decided 2026-11-05: palette P1 (the starting values), Cinzel for headings, Today layout T1 (Throne) and Log a workout layout L2 (Cards), from the milestone 1 mockups.
+
+## Carried from milestone 1
+
+Found while building milestone 1 (2026-11-05) and left for the milestone named. The schema is created once, so the
+schema items must be settled before milestone 4 loads it.
+
+**Milestone 2:**
+- **Words in C++.** Session's sign-in and device errors (and `Api::reasonOf`) are still written in C++, and the Sign-in
+  page shows server messages as sent. Milestone 2 starts by mapping each error code to a word in `words.mjs` (the
+  Sign-in page for sign-in, Settings for devices), adding `forms.mjs` checks for username 3–32 and password 8–256
+  before sending, and updating `tst_session`.
+- **`lastSignIn`** is derived from the newest session's expiry minus 30 days. Decide before the schema is loaded
+  whether `Sessions` needs a `CreatedAt` column (Settings shows devices).
+- **Deleting an own exercise.** `RoutineItems.ExerciseID` cascades while `WorkoutExercises.ExerciseID` restricts.
+  Settle this with the own-exercise delete, before the schema is loaded.
+- **Tests to add:** the offline banner is hidden while online; a 401 mid-session lands on Sign-in.
+- **Catalog page:** "isn't on this device yet" can flash before the first refresh starts; a tile caption with no
+  primary muscle starts with " · ".
+- **Ctrl+K:** the open list does not refresh when the catalog changes underneath it.
+
+**Milestone 3:**
+- `Suggestions.ProposedRepsMin/Max` have no range `CHECK`; add it before the schema is loaded.
+
+**Milestone 4 (rollout):**
+- A real-MySQL smoke test and one live `GET /catalog`: the server's SQL has only met the test fake.
+- Run the first real import before any app is pointed at the live server: an empty catalog answer
+  (`version: null`) replaces the app's copy.
+- The importer's picture cache keeps any 200 answer; if a bad picture is cached, delete `importer/cache/` and run
+  again.
+- Optional: store session tokens hashed (SHA-256 fits `CHAR(64)`).
+- The device fingerprint signs a device in and travels on every request, including over the LAN's plain HTTP.
+  Think about this before the iOS part.
+- The release package carries `secrets.json` beside the exe; it must never be committed.
+- `tools/check-public.ps1` does not read binary files; strip metadata from new images before committing them.

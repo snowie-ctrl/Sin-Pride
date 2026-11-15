@@ -1,0 +1,22 @@
+{
+  "_about": "free-exercise-db's equipment words onto Pride's list (spec §2). No equipment given means bodyweight. A word with no rule becomes other, and the change report lists it so a rule can be added here. addByName adds bench or pull-up bar when the name says so and the main equipment fits.",
+  "map": {
+    "body only": "bodyweight",
+    "barbell": "barbell",
+    "e-z curl bar": "barbell",
+    "dumbbell": "dumbbell",
+    "kettlebells": "kettlebell",
+    "machine": "machine",
+    "cable": "cable",
+    "bands": "bands",
+    "foam roll": "other",
+    "medicine ball": "other",
+    "exercise ball": "other",
+    "other": "other"
+  },
+  "none": "bodyweight",
+  "addByName": [
+    {"add": "bench", "nameContains": ["Bench Press", "Incline", "Decline"], "whenEquipment": ["barbell", "dumbbell"]},
+    {"add": "pull-up bar", "nameContains": ["Pull-Up", "Pullup", "Chin-Up", "Hanging"], "whenEquipment": ["bodyweight", "other", "bands"]}
+  ]
+}

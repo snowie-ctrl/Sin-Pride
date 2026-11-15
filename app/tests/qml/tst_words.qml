@@ -1,0 +1,46 @@
+import QtQuick
+import QtTest
+import "../../qml/logic/words.mjs" as Words
+
+TestCase {
+    name: "Words"
+
+    function test_catalogWordsReadAsPridesOwn() {
+        compare(Words.valueLabel("measure", "weight_reps"), "Weight × reps")
+        compare(Words.valueLabel("measure", "distance_time"), "Distance and time")
+        compare(Words.valueLabel("level", "expert"), "Expert")
+        compare(Words.valueLabel("region", "full"), "Full body")
+        compare(Words.valueLabel("equipment", "pull-up bar"), "Pull-up bar")
+        compare(Words.valueLabel("muscle", "middle back"), "Middle back")
+        // A word nobody taught the app still shows, as it came.
+        compare(Words.valueLabel("measure", "laps"), "laps")
+        compare(Words.listLabel("muscle", ["biceps", "lower back"]), "Biceps, Lower back")
+        compare(Words.listLabel("muscle", []), "")
+    }
+
+    function test_counts() {
+        compare(Words.countLabel(1), "1 exercise")
+        compare(Words.countLabel(873), "873 exercises")
+        compare(Words.shownOf(3, 873), "3 of 873 exercises")
+        compare(Words.shownOf(873, 873), "873 exercises")
+        compare(Words.pictureCount(0, 2), "1 of 2")
+    }
+
+    function test_creditNamesTheSourceAndItsLicence() {
+        verify(Words.creditLine("free-exercise-db", "Unlicense").indexOf("public domain") > 0)
+        verify(Words.creditLine("free-exercise-db", "Unlicense").indexOf("Unlicense") > 0)
+        compare(Words.creditLine("wger", "CC-BY-SA 4.0"), "From wger (CC-BY-SA 4.0).")
+        compare(Words.creditLine("own", ""), "From own.")
+    }
+
+    function test_theVoiceNeverShames() {
+        const banned = ["missed", "fail", "guilt", "lazy", "should have", "behind"]
+        for (const key of Object.keys(Words)) {
+            const value = Words[key]
+            if (typeof value !== "string")
+                continue
+            for (const word of banned)
+                verify(value.toLowerCase().indexOf(word) < 0, key + " says " + word)
+        }
+    }
+}

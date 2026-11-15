@@ -1,0 +1,17 @@
+# Exact strings check-public.ps1 may meet in the tree: public values that only look like tokens.
+# free-exercise-db's pinned commit (importer/sources.json, importer/README.md)
+f00c92c7dcf1216a928a52c3706c7ce8e2f71ed5
+# The spec's own words for what the check looks for (§10)
+user@host
+# A test name in server/tests/test_session.py that only looks like a token
+test_ipv6CallersAreCountedByTheirSlash64
+# Test names in server/tests/test_auth.py that only look like tokens
+test_anUnknownUsernameIs401LikeAWrongPassword
+test_anIdThatIsNotOneIs404BeforeAnyQuery
+# A test name in app/tests/tst_api.cpp that only looks like a token
+aSignedIn401WithNoBodyStillEndsTheSession
+# A made-up cache path in app/tests/stub/test_snapshot.py that only looks like a token
+free-exercise-db/c0ffee/exercises/Plank/0
+
+# google/fonts commit the heading face came from (app/assets/fonts/*/SOURCE.txt)
+24ddc1f324cac5d9f5aedca126d298f56e3f1640
