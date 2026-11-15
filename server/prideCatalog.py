@@ -68,6 +68,13 @@ CHILD_QUERIES = (
     ("pictures", f"SELECT c.ExerciseID, c.Path FROM ExercisePictures c {_CATALOG_ONLY} ORDER BY c.ExerciseID, c.Idx"),
 )
 
+# A person's own exercises (GET /api/pride/exercises): the same shape, only theirs, hidden ones included so their
+# workouts can still name them. Each query takes the owner's UserID.
+OWN_EXERCISES_QUERY = ("SELECT ExerciseID, Source, SourceKey, Licence, Name, Category, Level, Measure, Region, "
+                       "RemovedAt FROM Exercises WHERE OwnerUserID = %s ORDER BY Name, ExerciseID")
+_OWN_ONLY = "JOIN Exercises e ON e.ExerciseID = c.ExerciseID WHERE e.OwnerUserID = %s"
+OWN_CHILD_QUERIES = tuple((name, sql.replace(_CATALOG_ONLY, _OWN_ONLY)) for name, sql in CHILD_QUERIES)
+
 
 def exercisesJson(rows, children):
     """The catalog as docs/api.md shapes it: one object per exercise row, in the rows' order, each child table's

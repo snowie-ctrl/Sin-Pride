@@ -51,11 +51,38 @@ An exercise:
 - Words: `measure` is `weight_reps`, `reps`, `time` or `distance_time`; `region` is `upper`, `lower` or `full`;
   `equipment` words are `barbell`, `dumbbell`, `kettlebell`, `machine`, `cable`, `bands`, `bodyweight`, `bench`,
   `pull-up bar`, `other`; muscles, `category` and `level` are free-exercise-db's.
-- A person's own exercises are not here; milestone 2 adds them at `/exercises`.
+- A person's own exercises are not here; they are at `/api/pride/exercises` (see Own exercises).
 
 `GET /pictures/<name>` → the JPEG, `Cache-Control: private, max-age=86400`; `404` for a name that is not
 `<20 hex>.jpg` or not there. A picture's name is the first 20 hex of the SHA-1 of its bytes, so a name never changes
 meaning and the app can keep a copy for good.
+
+## Own exercises
+
+A person's own exercises, at `/api/pride/exercises`; every route needs a session and sees only that person's.
+
+| Route | Body | Answer |
+|---|---|---|
+| `GET /exercises` | | `data: [own exercise]` by name, hidden ones included |
+| `POST /exercises` | `{name, measure, primary, secondary?, equipment, steps?}` | `data: own exercise`; `409` (`status: "limit"`) at 200 shown own exercises |
+| `PUT /exercises/<id>` | as POST | `data: own exercise` |
+| `DELETE /exercises/<id>` | | `data: {routinesTouched, hidden}` |
+
+An own exercise is the catalog's exercise shape with `source: "own"`, `key: "own-<16 hex>"`, `licence`, `category` and
+`level` `null`, `pictures: []`, `region` from the primary muscles, and `removed` true once hidden:
+
+```json
+{"id": 900, "key": "own-0123456789abcdef", "source": "own", "licence": null,
+ "name": "Sandbag Carry", "category": null, "level": null,
+ "measure": "distance_time", "region": "upper", "removed": false,
+ "primary": ["forearms"], "secondary": ["traps"], "equipment": ["other"],
+ "steps": ["Pick it up.", "Walk."], "pictures": []}
+```
+
+A refused field is `400` naming it; an id that is not the person's, or is hidden, is `404`. The measure can't change
+once a routine item or a workout names the exercise (`400`, field `measure`). Deleting one takes it out of the
+person's routines, then deletes it, or hides it (`removed: true`) when a workout names it; `routinesTouched` is how
+many routines it was taken out of.
 
 ## Profile
 
