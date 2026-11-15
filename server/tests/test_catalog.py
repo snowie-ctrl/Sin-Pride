@@ -1,4 +1,6 @@
 """GET /catalog and GET /pictures/<name> against docs/api.md."""
+import json
+import pathlib
 from datetime import datetime
 
 import pytest
@@ -84,3 +86,17 @@ def test_aNameThatIsNotOneIs404(client, name):
 def test_aMissingPictureIs404(client):
     # isolated() refuses the database, so this also proves pictures need none.
     assert client.get(f"{A}/pictures/0123456789abcdef0123.jpg").status_code == 404
+
+
+@pytest.mark.parametrize("primary,want", [
+    (["biceps"], "upper"), (["quadriceps", "glutes"], "lower"), (["chest", "quadriceps"], "full"),
+    (["abdominals"], "full"), (["abdominals", "biceps"], "upper"), ([], "full"),
+])
+def test_regionComesFromThePrimaryMuscles(catalog, primary, want):
+    assert catalog.regionOf(primary) == want
+
+
+def test_theServersRegionRuleIsTheImportersOwn(catalog):
+    rule = json.loads((pathlib.Path(__file__).resolve().parents[2] / "importer/rules/region.json").read_text())
+    assert set(catalog.UPPER) == set(rule["upper"]) and set(catalog.LOWER) == set(rule["lower"])
+    assert set(catalog.CORE) == set(rule["core"])

@@ -28,6 +28,25 @@ REGIONS = ("upper", "lower", "full")
 EQUIPMENT = ("barbell", "dumbbell", "kettlebell", "machine", "cable", "bands", "bodyweight", "bench", "pull-up bar",
              "other")
 
+# A person's own exercises are rows of Exercises with this source and an owner (spec §3); imports may never use it.
+OWN_SOURCE = "own"
+# The body region from the primary muscles, as importer/rules/region.json words it (tests keep the two the same): an
+# own exercise gets its region the way an imported one does, so increments (spec §5) treat both alike.
+UPPER = ("biceps", "chest", "forearms", "lats", "middle back", "neck", "shoulders", "traps", "triceps")
+LOWER = ("abductors", "adductors", "calves", "glutes", "hamstrings", "quadriceps")
+CORE = ("abdominals", "lower back")
+
+
+def regionOf(primary):
+    """Upper only gives upper, lower only gives lower; both, or core alone (or nothing), give full."""
+    upper = any(m in UPPER for m in primary)
+    lower = any(m in LOWER for m in primary)
+    if upper and not lower:
+        return "upper"
+    if lower and not upper:
+        return "lower"
+    return "full"
+
 LIMITS = {"key": 100, "name": 120, "licence": 80, "step": 1000, "steps": 50, "pictures": 10, "exercises": 5000}
 # An import that would hide more than this share of a source's visible exercises is refused (spec §8).
 HIDE_GUARD = 0.10
@@ -118,7 +137,7 @@ def batchProblem(data):
     source = data.get("source")
     if not isinstance(source, str) or not SOURCE.fullmatch(source):
         return "source must be 1 to 40 lowercase letters, digits or dashes"
-    if source == "own":
+    if source == OWN_SOURCE:
         return "the source own is kept for a person's own exercises"
     exercises = data.get("exercises")
     if not isinstance(exercises, list) or not exercises:
