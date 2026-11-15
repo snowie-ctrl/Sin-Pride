@@ -38,7 +38,7 @@ Rectangle {
 
     Text {
         anchors { left: parent.left; right: parent.right; top: title.bottom; leftMargin: 10; rightMargin: 10; topMargin: 4 }
-        text: Words.listLabel("muscle", tile.exercise.primary) + " · " + Words.valueLabel("measure", tile.exercise.measure)
+        text: Words.tileCaption(tile.exercise.primary, tile.exercise.measure)
         elide: Text.ElideRight
         color: Preferences.textMuted
         font.family: Preferences.appFont

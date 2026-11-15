@@ -18,6 +18,16 @@ TestCase {
         compare(Words.listLabel("muscle", []), "")
     }
 
+    function test_aTileCaptionNeverStartsWithASeparator() {
+        compare(Words.tileCaption(["biceps"], "weight_reps"), "Biceps · Weight × reps")
+        compare(Words.tileCaption([], "time"), "Time")
+        compare(Words.tileCaption(["lats", "biceps"], ""), "Lats, Biceps")
+    }
+
+    function test_anUnreadableCatalogHasWords() {
+        compare(Words.failure("bad_reply"), "Pride sent a catalog this app can't read. Try again later.")
+    }
+
     function test_counts() {
         compare(Words.countLabel(1), "1 exercise")
         compare(Words.countLabel(873), "873 exercises")

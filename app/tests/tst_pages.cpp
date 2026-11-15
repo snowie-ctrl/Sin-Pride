@@ -362,7 +362,36 @@ private slots:
         QTRY_VERIFY(findVisible("offlineBanner"));
     }
 
+    void theBannerIsHiddenWhileOnline()
+    {
+        startSignedIn();
+        QVERIFY(find("offlineBanner"));
+        QVERIFY(!findVisible("offlineBanner"));
+    }
+
+    void aSessionEndedMidwayReturnsToSignIn()
+    {
+        startSignedIn();
+        server->statuses[path("/catalog")] = 401;
+        server->responses[path("/catalog")] = R"({"status":"error","message":"not signed in"})";
+        exercises->refresh();
+        QTRY_VERIFY(findVisible("loginPage"));
+        QVERIFY(!session->authenticated());
+    }
+
     // ---- The Catalog page ----
+
+    void theCatalogNeverSaysUnavailableBeforeItsFirstAnswer()
+    {
+        server->holdNext[path("/catalog")] = 1;
+        start();
+        QTRY_VERIFY(findVisible("catalogPage"));
+        QTRY_COMPARE(requestsTo("/catalog").size(), 1);
+        QVERIFY(findVisible("catalogLoading"));
+        QVERIFY(!findVisible("catalogUnavailable"));
+        server->releaseHeld();
+        QTRY_COMPARE(countVisible("exerciseTile"), 3);
+    }
 
     void theTilesAreTheShownCatalog()
     {
@@ -524,6 +553,25 @@ private slots:
         QTRY_VERIFY(findVisible("exercisePage"));
         QCOMPARE(find("exerciseName")->property("text").toString(), QStringLiteral("Pullups"));
         QVERIFY(!findVisible("quickSearchResults"));
+    }
+
+    void ctrlKFollowsACatalogChange()
+    {
+        startSignedIn();
+        QTest::keyClick(window(), Qt::Key_K, Qt::ControlModifier);
+        QTRY_VERIFY(find("quickSearchField")->hasActiveFocus());
+        type("pull");
+        QTRY_COMPARE(countVisible("quickSearchRow"), 1);
+        // Pullups leaves the catalog while the list is open.
+        QByteArray changed = catalogJson();
+        changed.replace(R"("version":"v1")", R"("version":"v2")");
+        const QByteArray before = R"("level":"beginner","measure":"reps","region":"upper","removed":false)";
+        QVERIFY(changed.contains(before));
+        changed.replace(before, R"("level":"beginner","measure":"reps","region":"upper","removed":true)");
+        server->responses[path("/catalog")] = changed;
+        exercises->refresh();
+        QTRY_VERIFY(findVisible("quickSearchNothing"));
+        QCOMPARE(countVisible("quickSearchRow"), 0);
     }
 
     void ctrlKWithNoMatchSaysSoAndEscapeCloses()

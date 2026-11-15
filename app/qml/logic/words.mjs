@@ -50,11 +50,17 @@ export function deviceError(code) {
 const failures = {
     network: "Can't reach Pride right now. Nothing was lost; try again.",
     server: "Pride couldn't do that just now. Try again.",
+    bad_reply: "Pride sent a catalog this app can't read. Try again later.",
 }
 
 // Why a save or a load failed (the services' codes; Task 13 adds the rest).
 export function failure(code) {
     return failures[code] || failures.server
+}
+
+// A tile's second line: its primary muscles and how it is measured, leaving out whichever is missing.
+export function tileCaption(primary, measure) {
+    return [listLabel("muscle", primary), measure ? valueLabel("measure", measure) : ""].filter(s => s.length).join(" · ")
 }
 
 export const navCatalog = "Catalog"

@@ -12,6 +12,11 @@ Rectangle {
     color: Preferences.backgroundPrimary
 
     readonly property bool empty: ExerciseStore.count === 0
+    // With no server answering, nothing is on its way to settle the catalog, so waiting for a first answer would
+    // never end: the page says what is true (the catalog isn't here, and the server is away) and offers Try again.
+    readonly property bool away: !Session.online || Session.offline
+    // The catalog's first answer is still to come.
+    readonly property bool gathering: ExerciseStore.loading || (!ExerciseStore.settled && !root.away)
 
     FilterPanel {
         id: panel
@@ -109,7 +114,7 @@ Rectangle {
         Text {
             objectName: "catalogLoading"
             anchors.centerIn: parent
-            visible: root.empty && ExerciseStore.loading
+            visible: root.empty && root.gathering
             text: Words.catalogLoading
             color: Preferences.textMuted
             font.family: Preferences.appFont
@@ -120,14 +125,14 @@ Rectangle {
             objectName: "catalogUnavailable"
             anchors.centerIn: parent
             width: Math.min(parent.width, 420)
-            visible: root.empty && !ExerciseStore.loading
+            visible: root.empty && !root.gathering
             spacing: Preferences.spacingMedium
 
             Text {
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.Wrap
-                text: Words.catalogUnavailable + (!Session.online || Session.offline ? " " + Words.catalogOffline : "")
+                text: Words.catalogUnavailable + (root.away ? " " + Words.catalogOffline : "")
                 color: Preferences.textSecondary
                 font.family: Preferences.appFont
                 font.pixelSize: Preferences.fontSizeBody
