@@ -2,8 +2,7 @@
 Pride's app routes at /api/pride: the reachability check, accounts (sign-in, sign-up with a login key, a device that
 signs itself in, sign-out, devices) and the exercise catalog with its pictures. docs/api.md is the contract for the
 desktop app and the iOS app. Every route needs a session (prideSession.py) unless PUBLIC_ROUTES names it, so a route
-added later cannot forget the check. What a person owns (profile, programs, workouts) arrives in prideUserRoutes.py in
-milestone 2.
+added later cannot forget the check. What a person owns (profile, programs, workouts) is in prideUserRoutes.py.
 """
 import hashlib
 import re

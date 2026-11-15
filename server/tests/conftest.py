@@ -169,3 +169,20 @@ def adminClient(adminRoutes):
 @pytest.fixture
 def anonAdminClient(adminRoutes):
     return _adminClient(adminRoutes)
+
+
+@pytest.fixture
+def userRoutes():
+    return loadModule("prideUserRoutes")
+
+
+@pytest.fixture
+def anonUserClient(routes, userRoutes):
+    """Both /api/pride blueprints, as Caduceus will register them (milestone 4)."""
+    return appClient(routes.prideBP, userRoutes.prideUserBP)
+
+
+@pytest.fixture
+def userClient(anonUserClient):
+    anonUserClient.environ_base["HTTP_X_SESSION_TOKEN"] = SESSION
+    return anonUserClient

@@ -1,6 +1,6 @@
 # Copied from Gluttony server/gluttonySession.py at c1ed705; changes: Pride's names (the pride database, /api/pride, [pride] in the log); no profileOf.
 """
-Who is asking, for Pride's app routes at /api/pride (prideRoutes.py now, prideUserRoutes.py from milestone 2): one
+Who is asking, for Pride's app routes at /api/pride (prideRoutes.py and prideUserRoutes.py): one
 session check, one rate limiter and one way of hiding server errors from internet callers, as in Gluttony. Every view
 needs a session unless PUBLIC_ROUTES names it, so a route added later cannot forget the check. The admin blueprint
 (/api/pride-admin) has its own token and never installs this.

@@ -1,7 +1,7 @@
 # Pride API (part 1)
 
 The contract between Pride's apps (the desktop app in `app/`, and the iOS app of part 2) and the routes on plutus:
-`server/prideRoutes.py` at `/api/pride` and, for the catalog importer only, `server/prideAdminRoutes.py` at
+`server/prideRoutes.py` and `server/prideUserRoutes.py` at `/api/pride` and, for the catalog importer only, `server/prideAdminRoutes.py` at
 `/api/pride-admin`. The desktop app's stub (`app/tests/stub/stub_server.py`) imitates `/api/pride`. Milestone 1's
 routes are below; each later milestone adds its own.
 
@@ -16,6 +16,8 @@ routes are below; each later milestone adds its own.
 - `POST /auth` allows 5 attempts a minute and `POST /device/identify` 10, per caller: `429 "too many attempts"`.
 - A 5xx through the tunnel is `{"status":"error","message":"server error"}`; at home it names the cause.
 - Dates are ISO 8601; moments are UTC with a `Z`.
+- A refusal of what was sent is `400 {status:"error", field, message}`, naming the body field. An id that is not the
+  caller's is `404 "not found"`. Past a limit: `409 {status:"limit", field, message}`.
 
 ## Account
 
@@ -54,6 +56,17 @@ An exercise:
 `GET /pictures/<name>` → the JPEG, `Cache-Control: private, max-age=86400`; `404` for a name that is not
 `<20 hex>.jpg` or not there. A picture's name is the first 20 hex of the SHA-1 of its bytes, so a name never changes
 meaning and the app can keep a copy for good.
+
+## Profile
+
+| Route | Body | Answer |
+|---|---|---|
+| `GET /profile` | | `data: profile` (a person with no profile row gets one made with the defaults) |
+| `PUT /profile` | any of the profile's keys (`equipment` replaces the whole list) | `data: profile`. Units changed without increments: the increments become that unit's defaults (5/10 lb, 2.5/5 kg). |
+
+A profile: `{units, goal, daysPerWeek, upperIncrement, lowerIncrement, weekStart, introState, equipment: [words]}`;
+`equipment` is in the catalog's equipment order and the increments are numbers (0.25 to 100 in steps of 0.25; days a
+week 2 to 6).
 
 ## Admin (`/api/pride-admin`, LAN only)
 
