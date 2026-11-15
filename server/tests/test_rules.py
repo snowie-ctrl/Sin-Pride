@@ -61,4 +61,12 @@ def test_aDoneDayIsNotAlsoPlanned():
 def test_aSundayWeekStartingOnSunday():
     days = rules.week(SUN, "sun", {6, 0}, set())
     assert days[0]["date"] == SUN.isoformat() and days[0]["weekday"] == 6
+    assert [d["weekday"] for d in days] == [6, 0, 1, 2, 3, 4, 5]
     assert days[0]["planned"] is True and days[1]["planned"] is True
+
+
+def test_aMissedDayIsNeverShownAsPlanned():
+    # Monday and Tuesday are planned weekdays that passed with no workout: they show nothing, today still plans.
+    days = rules.week(WED, "mon", {0, 1, 2}, set())
+    assert [d["planned"] for d in days[:3]] == [False, False, True]
+    assert [d["done"] for d in days[:3]] == [False, False, False]
