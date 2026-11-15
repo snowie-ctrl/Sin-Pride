@@ -1,0 +1,36 @@
+{
+  "key": "pushPullLegs",
+  "order": 3,
+  "title": "Push/Pull/Legs",
+  "blurb": "Pressing, pulling, legs, round and round. More days, so each one is shorter and more focused.",
+  "forDays": [5, 6],
+  "days": {"5": [0, 1, 2, 3, 4], "6": [0, 1, 2, 3, 4, 5]},
+  "variants": [
+    {"name": "gym", "needs": ["barbell", "bench", "cable", "machine", "dumbbell"], "routines": [
+      {"title": "Push", "items": [{"exercise": "Barbell_Bench_Press_-_Medium_Grip"}, {"exercise": "Standing_Military_Press"},
+        {"exercise": "Incline_Dumbbell_Press"}, {"exercise": "Side_Lateral_Raise"}, {"exercise": "Triceps_Pushdown"}]},
+      {"title": "Pull", "items": [{"exercise": "Wide-Grip_Lat_Pulldown"}, {"exercise": "Seated_Cable_Rows"},
+        {"exercise": "Bent_Over_Barbell_Row"}, {"exercise": "Reverse_Flyes"}, {"exercise": "Barbell_Curl"}]},
+      {"title": "Legs", "items": [{"exercise": "Barbell_Squat"}, {"exercise": "Leg_Press"},
+        {"exercise": "Stiff-Legged_Dumbbell_Deadlift"}, {"exercise": "Lying_Leg_Curls"}, {"exercise": "Standing_Calf_Raises"},
+        {"exercise": "Plank", "seconds": 30}]}]},
+    {"name": "dumbbell", "needs": ["dumbbell", "bench"], "routines": [
+      {"title": "Push", "items": [{"exercise": "Dumbbell_Bench_Press"}, {"exercise": "Seated_Dumbbell_Press"},
+        {"exercise": "Incline_Dumbbell_Press"}, {"exercise": "Side_Lateral_Raise"},
+        {"exercise": "Standing_Dumbbell_Triceps_Extension"}]},
+      {"title": "Pull", "items": [{"exercise": "One-Arm_Dumbbell_Row"}, {"exercise": "Bent_Over_Two-Dumbbell_Row"},
+        {"exercise": "Reverse_Flyes"}, {"exercise": "Dumbbell_Bicep_Curl"}, {"exercise": "Hammer_Curls"}]},
+      {"title": "Legs", "items": [{"exercise": "Dumbbell_Squat"}, {"exercise": "Stiff-Legged_Dumbbell_Deadlift"},
+        {"exercise": "Dumbbell_Lunges"}, {"exercise": "Butt_Lift_Bridge"}, {"exercise": "Dumbbell_Seated_One-Leg_Calf_Raise"},
+        {"exercise": "Plank", "seconds": 30}]}]},
+    {"name": "bodyweight", "needs": [],
+     "blurb": "Pressing, pulling, legs, round and round. No bar at home? Pull day leans on rows and your core until you have one.",
+     "routines": [
+      {"title": "Push", "items": [{"exercise": "Pushups"}, {"exercise": "Incline_Push-Up"}, {"exercise": "Decline_Push-Up"},
+        {"exercise": "Bench_Dips"}, {"exercise": "Body_Tricep_Press"}]},
+      {"title": "Pull", "items": [{"exercise": "Inverted_Row"}, {"exercise": "Superman", "seconds": 20},
+        {"exercise": "Reverse_Crunch"}, {"exercise": "Dead_Bug"}, {"exercise": "Side_Bridge", "seconds": 30}]},
+      {"title": "Legs", "items": [{"exercise": "Bodyweight_Squat"}, {"exercise": "Bodyweight_Walking_Lunge"},
+        {"exercise": "Single_Leg_Glute_Bridge"}, {"exercise": "Step-up_with_Knee_Raise"}, {"exercise": "Plank", "seconds": 30}]}]}
+  ]
+}

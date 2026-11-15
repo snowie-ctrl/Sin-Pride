@@ -23,3 +23,4 @@ is in `docs/superpowers/specs/`, and the API contract in `docs/api.md`.
 
 - Exercise data and pictures will come from [free-exercise-db](https://github.com/yuhonas/free-exercise-db)
   (released into the public domain under the Unlicense).
+- The starter programs are Pride's own, built from free-exercise-db's beginner exercises.

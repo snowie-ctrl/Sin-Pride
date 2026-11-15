@@ -9,7 +9,7 @@ import secrets
 
 from flask import Blueprint, jsonify, request
 
-from . import prideCatalog as catalog, prideChecks as checks, prideSession as session
+from . import prideCatalog as catalog, prideChecks as checks, prideSession as session, prideStarters as starters
 
 prideUserBP = Blueprint("prideUser", __name__)
 session.install(prideUserBP)
@@ -638,3 +638,63 @@ def reorderItems():
             return refuse(refusal)
         touch(cur, routine["ProgramID"])
         return answerProgram(conn, cur, uid, routine["ProgramID"])
+
+
+# ---- Starters (spec §6; plan decisions 10–12) ----
+
+def startersFound(cur, keys):
+    """The visible catalog exercises among these keys, by key."""
+    ordered = sorted(keys)
+    cur.execute("SELECT ExerciseID, SourceKey, Name, Measure FROM Exercises WHERE Source = %s AND OwnerUserID IS NULL "
+                f"AND RemovedAt IS NULL AND SourceKey IN ({', '.join(['%s'] * len(ordered))})",
+                (starters.SOURCE, *ordered))
+    return {r["SourceKey"]: {"id": r["ExerciseID"], "name": r["Name"], "measure": r["Measure"]} for r in cur.fetchall()}
+
+
+@prideUserBP.route("/starters", methods=["GET"])
+def listStarters():
+    uid = session.requestUID()
+    every = starters.load()
+    with database() as (conn, cur):
+        profile = profileRow(cur, uid)
+        equipment = equipmentOf(cur, uid)
+        found = startersFound(cur, starters.keysOf(every))
+        conn.commit()
+    return ok([starters.fill(s, equipment, profile["Goal"], profile["DaysPerWeek"], found) for s in every])
+
+
+@prideUserBP.route("/starters/<key>/adopt", methods=["POST"])
+def adoptStarter(key):
+    """Copies the starter, filled for this person, into a new program and makes it the active one (plan decision
+    10). Only ever adds a program, so a replay of the intro never changes one (spec §6)."""
+    uid = session.requestUID()
+    every = {s["key"]: s for s in starters.load()}
+    with database() as (conn, cur):
+        lockPerson(cur, uid)
+        if countPrograms(cur, uid) >= checks.LIMITS["programs"]:
+            return overLimit("program", f"at most {checks.LIMITS['programs']} programs")
+        starter = every.get(key)
+        if starter is None:
+            return notFound()
+        profile = profileRow(cur, uid)
+        equipment = equipmentOf(cur, uid)
+        filled = starters.fill(starter, equipment, profile["Goal"], profile["DaysPerWeek"],
+                               startersFound(cur, starters.keysOf([starter])))
+        if not any(r["items"] for r in filled["routines"]):
+            return jsonify({"status": "unavailable", "message": "none of this starter's exercises are in the catalog"}), 409
+        cur.execute("INSERT INTO Programs (UserID, Title, IsActive, StarterKey) VALUES (%s, %s, %s, %s)",
+                    (uid, filled["title"], 0, key))
+        programId = cur.lastrowid
+        cur.execute("UPDATE Programs SET IsActive = (ProgramID = %s) WHERE UserID = %s", (programId, uid))
+        for day in filled["days"]:
+            cur.execute("INSERT INTO ProgramDays (ProgramID, Weekday) VALUES (%s, %s)", (programId, day))
+        for index, routine in enumerate(filled["routines"]):
+            cur.execute("INSERT INTO Routines (ProgramID, Title, OrderIndex) VALUES (%s, %s, %s)",
+                        (programId, routine["title"], index))
+            routineId = cur.lastrowid
+            for order, item in enumerate(routine["items"]):
+                cur.execute("INSERT INTO RoutineItems (RoutineID, ExerciseID, OrderIndex, Sets, RepsMin, RepsMax, "
+                            "TargetSeconds, RestSeconds) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+                            (routineId, item["exerciseId"], order, item["sets"], item["repsMin"], item["repsMax"],
+                             item["targetSeconds"], item["restSeconds"]))
+        return answerProgram(conn, cur, uid, programId)

@@ -154,6 +154,15 @@ one set for distance and time); targets sent with it replace those. `PUT` sends 
 Only exercises in the catalog or the person's own, not hidden, can be added; one hidden later stays in its routines.
 A refused field is `400` naming it; an id that is not the person's is `404`.
 
+## Starters
+
+| Route | Body | Answer |
+|---|---|---|
+| `GET /starters` | | `data: [starter]` (Foundations, Upper/Lower, Push/Pull/Legs) |
+| `POST /starters/<key>/adopt` | | `data: program` (new, the active one); `404` for an unknown key; `409` (`status: "limit"`) at 20 programs; `409` (`status: "unavailable"`) when none of its exercises are in the catalog |
+
+Each starter is filled for the caller: the variant their equipment allows (gym, dumbbell, bodyweight), the planned weekdays for their days a week, 3 sets of their goal's rep range (timed items keep their own seconds), 90 s rest for weight × reps and 60 s otherwise. An exercise not in the catalog is left out and listed in `missing`. `suggested` marks the starter for their days a week. Adopting makes a new program, the active one.
+
 ## Admin (`/api/pride-admin`, LAN only)
 
 For the catalog importer (`importer/`). The tunnel never routes this prefix. Every request needs `X-Admin-Token`, the

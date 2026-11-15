@@ -1,0 +1,29 @@
+{
+  "key": "upperLower",
+  "order": 2,
+  "title": "Upper/Lower",
+  "blurb": "Upper body one day, legs the next. Each gets twice a week and a proper rest between.",
+  "forDays": [4],
+  "days": {"4": [0, 1, 3, 4]},
+  "variants": [
+    {"name": "gym", "needs": ["barbell", "bench", "cable", "machine", "dumbbell"], "routines": [
+      {"title": "Upper", "items": [{"exercise": "Barbell_Bench_Press_-_Medium_Grip"}, {"exercise": "Bent_Over_Barbell_Row"},
+        {"exercise": "Standing_Military_Press"}, {"exercise": "Wide-Grip_Lat_Pulldown"}, {"exercise": "Barbell_Curl"},
+        {"exercise": "Triceps_Pushdown"}]},
+      {"title": "Lower", "items": [{"exercise": "Barbell_Squat"}, {"exercise": "Stiff-Legged_Dumbbell_Deadlift"},
+        {"exercise": "Leg_Press"}, {"exercise": "Lying_Leg_Curls"}, {"exercise": "Standing_Calf_Raises"},
+        {"exercise": "Plank", "seconds": 30}]}]},
+    {"name": "dumbbell", "needs": ["dumbbell", "bench"], "routines": [
+      {"title": "Upper", "items": [{"exercise": "Dumbbell_Bench_Press"}, {"exercise": "One-Arm_Dumbbell_Row"},
+        {"exercise": "Seated_Dumbbell_Press"}, {"exercise": "Side_Lateral_Raise"}, {"exercise": "Hammer_Curls"},
+        {"exercise": "Standing_Dumbbell_Triceps_Extension"}]},
+      {"title": "Lower", "items": [{"exercise": "Dumbbell_Squat"}, {"exercise": "Stiff-Legged_Dumbbell_Deadlift"},
+        {"exercise": "Dumbbell_Lunges"}, {"exercise": "Butt_Lift_Bridge"}, {"exercise": "Dumbbell_Seated_One-Leg_Calf_Raise"},
+        {"exercise": "Plank", "seconds": 30}]}]},
+    {"name": "bodyweight", "needs": [], "routines": [
+      {"title": "Upper", "items": [{"exercise": "Pushups"}, {"exercise": "Inverted_Row"}, {"exercise": "Incline_Push-Up"},
+        {"exercise": "Bench_Dips"}, {"exercise": "Superman", "seconds": 20}]},
+      {"title": "Lower", "items": [{"exercise": "Bodyweight_Squat"}, {"exercise": "Bodyweight_Walking_Lunge"},
+        {"exercise": "Single_Leg_Glute_Bridge"}, {"exercise": "Step-up_with_Knee_Raise"}, {"exercise": "Plank", "seconds": 30}]}]}
+  ]
+}
