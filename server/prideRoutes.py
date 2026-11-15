@@ -47,6 +47,8 @@ def ping():
 
 USERNAME_MIN, USERNAME_MAX = 3, 32
 PASSWORD_MIN, PASSWORD_MAX = 8, 256
+# Checked against when a username is unknown, so a sign-in takes as long whether or not the account exists.
+DUMMY_HASH = generate_password_hash("no account has this password")
 DEVICE_ID = re.compile(r"[0-9a-f]{16}")
 
 
@@ -120,7 +122,7 @@ def auth():
         problem = usernameProblem(username) or passwordProblem(password)
         if problem:
             return fail(problem, 400)
-    elif len(username) > USERNAME_MAX:
+    elif len(username) > USERNAME_MAX or len(password) > PASSWORD_MAX:
         return fail("invalid_credentials", 401, status="invalid_credentials")
 
     with database() as (conn, cur):
@@ -143,7 +145,8 @@ def auth():
         else:
             cur.execute("SELECT UserID, Username, PasswordHash FROM Users WHERE Username = %s", (username,))
             user = cur.fetchone()
-            if not user or not check_password_hash(user["PasswordHash"], password):
+            # An unknown username still pays for one hash check, so timing does not tell which usernames exist.
+            if not check_password_hash(user["PasswordHash"] if user else DUMMY_HASH, password) or not user:
                 return fail("invalid_credentials", 401, status="invalid_credentials")
             uid, username = user["UserID"], user["Username"]
         # Remember the device either way, so it signs itself in next time.
@@ -157,14 +160,15 @@ def auth():
 @prideBP.route("/signout", methods=["POST"])
 def signOut():
     """Sign out, and make this device forget the account; without dropping the Devices row the next start would
-    sign straight back in. Only this device is forgotten."""
-    fingerprint = str(body().get("fingerprint") or request.headers.get("X-Device-Fingerprint") or "")[:255]
-    if not fingerprint:
-        return fail("missing fingerprint", 400)
+    sign straight back in. The device is the one this session was made for (the caller names nothing), so only this
+    device is forgotten. The session presented always ends."""
     uid = session.requestUID()
     with database() as (conn, cur):
-        cur.execute("DELETE FROM Devices WHERE Fingerprint = %s AND UserID = %s", (fingerprint, uid))
-        cur.execute("DELETE FROM Sessions WHERE DeviceFingerprint = %s AND UserID = %s", (fingerprint, uid))
+        fingerprint = currentFingerprint(cur, uid)
+        if fingerprint:
+            cur.execute("DELETE FROM Devices WHERE Fingerprint = %s AND UserID = %s", (fingerprint, uid))
+            cur.execute("DELETE FROM Sessions WHERE DeviceFingerprint = %s AND UserID = %s", (fingerprint, uid))
+        cur.execute("DELETE FROM Sessions WHERE Token = %s AND UserID = %s", (session.sessionToken(), uid))
         conn.commit()
     return ok()
 

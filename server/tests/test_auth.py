@@ -6,7 +6,7 @@ from datetime import datetime
 import pytest
 from werkzeug.security import generate_password_hash
 
-from conftest import UID
+from conftest import SESSION, UID
 
 A = "/api/pride"
 HASH = generate_password_hash("right-password")
@@ -55,6 +55,20 @@ def test_anUnknownUsernameIs401LikeAWrongPassword(anonClient, useDb):
     useDb(fetchone=[None])
     answer = post(anonClient, "/auth", {"username": "nobody", "password": "whatever", "fingerprint": "f1"})
     assert answer.status_code == 401 and answer.get_json()["status"] == "invalid_credentials"
+
+
+def test_aLongPasswordIs401AtOnce(anonClient):
+    # No database installed: nothing may be queried or hashed for a password no account can have.
+    answer = post(anonClient, "/auth", {"username": "ann", "password": "y" * 257, "fingerprint": "f1"})
+    assert answer.status_code == 401 and answer.get_json()["status"] == "invalid_credentials"
+
+
+def test_anUnknownUserStillGetsAHashCheck(anonClient, useDb, routes, monkeypatch):
+    seen = []
+    monkeypatch.setattr(routes, "check_password_hash", lambda stored, given: seen.append((stored, given)) or False)
+    useDb(fetchone=[None])
+    answer = post(anonClient, "/auth", {"username": "nobody", "password": "whatever", "fingerprint": "f1"})
+    assert answer.status_code == 401 and seen == [(routes.DUMMY_HASH, "whatever")]
 
 
 def test_signUpSpendsTheKeyInOneTransaction(anonClient, useDb):
@@ -115,15 +129,30 @@ def test_theSixthSignInAMinuteIsRefused(anonClient, useDb):
 
 
 def test_signingOutForgetsThisDeviceOnly(client, useDb):
-    conn = useDb()
-    assert post(client, "/signout", {"fingerprint": "f1"}).get_json() == {"status": "ok"}
+    conn = useDb(fetchone=[{"DeviceFingerprint": "f1"}])
+    assert post(client, "/signout", {}).get_json() == {"status": "ok"}
     assert conn.cur.statements("DELETE FROM Devices")[0][1] == ("f1", UID)
-    assert conn.cur.statements("DELETE FROM Sessions")[0][1] == ("f1", UID)
+    assert conn.cur.statements("DELETE FROM Sessions WHERE DeviceFingerprint")[0][1] == ("f1", UID)
+    assert conn.cur.statements("DELETE FROM Sessions WHERE Token")[0][1] == (SESSION, UID)
     assert conn.commits == 1
 
 
+def test_signingOutIgnoresAFingerprintTheCallerSends(client, useDb):
+    conn = useDb(fetchone=[{"DeviceFingerprint": "mine"}])
+    post(client, "/signout", {"fingerprint": "someone-elses"})
+    assert conn.cur.statements("DELETE FROM Devices")[0][1] == ("mine", UID)
+    assert all("someone-elses" not in str(s[1]) for s in conn.cur.statements("DELETE"))
+
+
+def test_signingOutAlwaysEndsThePresentingSession(client, useDb):
+    conn = useDb(fetchone=[None])
+    assert post(client, "/signout", {}).get_json() == {"status": "ok"}
+    assert not conn.cur.statements("DELETE FROM Devices")
+    assert conn.cur.statements("DELETE FROM Sessions WHERE Token")[0][1] == (SESSION, UID)
+
+
 def test_signingOutNeedsASession(anonClient):
-    assert post(anonClient, "/signout", {"fingerprint": "f1"}).status_code == 401
+    assert post(anonClient, "/signout", {}).status_code == 401
 
 
 def test_devicesAreNamedNeverByTheirFingerprint(client, useDb):
