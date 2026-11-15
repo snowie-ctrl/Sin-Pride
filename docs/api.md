@@ -95,6 +95,42 @@ A profile: `{units, goal, daysPerWeek, upperIncrement, lowerIncrement, weekStart
 `equipment` is in the catalog's equipment order and the increments are numbers (0.25 to 100 in steps of 0.25; days a
 week 2 to 6).
 
+## Programs
+
+A person's programs, at `/api/pride/programs`; every route needs a session and sees only that person's. Every write
+to a program answers with the whole program, so the app replaces its copy; activate and delete answer with the list.
+
+| Route | Body | Answer |
+|---|---|---|
+| `GET /programs` | | `data: [program row]` by creation |
+| `POST /programs` | `{title}` | `data: program` (the person's first is active); `409` (`status: "limit"`) at 20 programs |
+| `GET /programs/<id>` | | `data: program` |
+| `PUT /programs/<id>` | `{title}` | `data: program` |
+| `POST /programs/<id>/duplicate` | | `data: program` (new, not active); `409` at 20 programs |
+| `DELETE /programs/<id>` | | `data: [program row]` |
+| `POST /programs/<id>/activate` | | `data: [program row]` |
+| `PUT /programs/<id>/days` | `{days: [weekdays]}` | `data: program` |
+
+Weekdays are 0 (Monday) to 6 (Sunday). A program, a program row and an item (absent targets are `null`):
+
+```json
+{"id": 5, "title": "Upper/Lower", "active": true, "starterKey": "upperLower", "days": [0, 3],
+ "updatedAt": "2026-11-15T09:00:00Z",
+ "routines": [{"id": 50, "title": "Upper", "items": [
+   {"id": 500, "exerciseId": 12, "sets": 3, "repsMin": 8, "repsMax": 12, "targetWeight": 135.0,
+    "targetUnit": "lb", "targetSeconds": null, "targetDistance": null, "distanceUnit": null,
+    "restSeconds": 90, "note": null}]}]}
+```
+
+```json
+{"id": 5, "title": "Upper/Lower", "active": true, "starterKey": "upperLower", "days": [0, 3],
+ "routineCount": 2, "updatedAt": "2026-11-15T09:00:00Z"}
+```
+
+The first program a person makes is active. Duplicate makes "<title> copy" (60 characters at most), not active, with
+the same days, routines and items. Deleting the active program leaves none active. A refused field is `400` naming it
+(a blank or over-long `title`, `days` that are not distinct weekdays 0 to 6); an id that is not the person's is `404`.
+
 ## Admin (`/api/pride-admin`, LAN only)
 
 For the catalog importer (`importer/`). The tunnel never routes this prefix. Every request needs `X-Admin-Token`, the
