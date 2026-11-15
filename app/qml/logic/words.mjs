@@ -51,9 +51,11 @@ const failures = {
     network: "Can't reach Pride right now. Nothing was lost; try again.",
     server: "Pride couldn't do that just now. Try again.",
     bad_reply: "Pride sent a catalog this app can't read. Try again later.",
+    not_found: "That's gone: it was changed or removed somewhere else.",
+    unavailable: "None of that starter's exercises are in the catalog yet.",
 }
 
-// Why a save or a load failed (the services' codes; Task 13 adds the rest).
+// Why a save or a load failed, by the code a service reports; a code nobody taught the app reads as a server problem.
 export function failure(code) {
     return failures[code] || failures.server
 }
@@ -126,4 +128,87 @@ export function creditLine(source, licence) {
     if (source === "free-exercise-db")
         return `From free-exercise-db, released into the public domain (${licence}).`
     return licence ? `From ${source} (${licence}).` : `From ${source}.`
+}
+
+// ---- Planning (milestone 2) ----
+
+const weekdaysShort = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+const weekdaysLong = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+export function weekdayShort(weekday) { return weekdaysShort[weekday] || "" }
+export function weekdayLong(weekday) { return weekdaysLong[weekday] || "" }
+
+function dayNumber(iso) {
+    const [y, m, d] = String(iso).split("-").map(Number)
+    return Date.UTC(y, m - 1, d) / 86400000
+}
+
+// When next up is planned (spec §6, "Pull · planned for Wednesday"); with no planned days, whenever you're ready.
+export function plannedFor(dateIso, todayIso) {
+    if (!dateIso)
+        return "whenever you're ready"
+    const ahead = dayNumber(dateIso) - dayNumber(todayIso)
+    if (ahead === 0)
+        return "planned for today"
+    if (ahead === 1)
+        return "planned for tomorrow"
+    const weekday = (new Date(dayNumber(dateIso) * 86400000).getUTCDay() + 6) % 7
+    return `planned for ${weekdaysLong[weekday]}`
+}
+
+const goals = { strength: "Strength", muscle: "Muscle", general: "General fitness" }
+const goalHints = { strength: "Heavier, fewer reps (5–8)", muscle: "The middle ground (8–12)",
+                    general: "Lighter, more reps (10–15)" }
+export function goalLabel(goal) { return goals[goal] || goal }
+export function goalHint(goal) { return goalHints[goal] || "" }
+
+const units = { lb: "Pounds (lb)", kg: "Kilograms (kg)" }
+export function unitsLabel(unit) { return units[unit] || unit }
+
+const presets = { gym: "Full gym", dumbbells: "Dumbbells and a bench", bodyweight: "Bodyweight and bands" }
+export function presetLabel(preset) { return presets[preset] || preset }
+
+const variants = { gym: "For a full gym", dumbbell: "For dumbbells and a bench", bodyweight: "For bodyweight" }
+export function starterVariant(variant) { return variants[variant] || "" }
+
+const fieldProblems = {
+    title: "A name is 1 to 60 characters",
+    note: "A note is up to 1,000 characters",
+    sets: "Sets are 1 to 20",
+    repsMin: "Reps are 1 to 100",
+    repsMax: "The top of the range is 1 to 100, and not below the bottom",
+    targetWeight: "A weight is 0 to 2,000",
+    targetUnit: "Pick lb or kg for the weight",
+    targetSeconds: "A time is 1 second to 10 hours, like 45 or 1:30",
+    targetDistance: "A distance is above 0 and up to 1,000",
+    distanceUnit: "Pick km, mi or m for the distance",
+    restSeconds: "Rest is up to an hour, like 90 or 1:30",
+    name: "A name is 1 to 120 characters",
+    measure: "Pick how it's measured",
+    primary: "Pick at least one main muscle",
+    secondary: "A muscle can't be both main and also worked",
+    equipment: "Pick at least one piece of equipment",
+    steps: "Up to 50 steps, each up to 1,000 characters",
+    upperIncrement: "An increment is 0.25 to 100, in steps of 0.25",
+    lowerIncrement: "An increment is 0.25 to 100, in steps of 0.25",
+    daysPerWeek: "Pick 2 to 6 days a week",
+    days: "Pick days of the week",
+    exerciseId: "That exercise isn't available any more",
+    order: "Something changed meanwhile. Try again.",
+}
+export function fieldProblem(field) { return fieldProblems[field] || "That doesn't look right" }
+
+const limits = { program: "20 programs is the most Pride keeps for you.",
+                 routine: "14 routines is the most a program holds.",
+                 item: "30 exercises is the most a routine holds.",
+                 exercise: "200 exercises of your own is the most Pride keeps." }
+export function limitReached(field) { return limits[field] || "That's the most Pride keeps." }
+
+// What a page says when a service's save or load fails (Programs, Profile, Catalog: failed(code, field)).
+export function saveProblem(code, field) {
+    if (code === "invalid")
+        return fieldProblem(field)
+    if (code === "limit")
+        return limitReached(field)
+    return failure(code)
 }

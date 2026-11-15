@@ -55,13 +55,40 @@ TestCase {
     }
 
     function test_theVoiceNeverShames() {
-        const banned = ["missed", "fail", "guilt", "lazy", "should have", "behind"]
-        for (const key of Object.keys(Words)) {
-            const value = Words[key]
-            if (typeof value !== "string")
-                continue
-            for (const word of banned)
-                verify(value.toLowerCase().indexOf(word) < 0, key + " says " + word)
+        const banned = ["missed", "fail", "guilt", "lazy", "should have", "behind", "skip a day", "late", "overdue"]
+        // Strings inside the arrays and objects the module exports (weekday names, labels) count too.
+        const check = (value, where) => {
+            if (typeof value === "string") {
+                for (const word of banned)
+                    verify(value.toLowerCase().indexOf(word) < 0, where + " says " + word)
+            } else if (value !== null && typeof value === "object") {
+                for (const inner of Object.keys(value))
+                    check(value[inner], where + "." + inner)
+            }
         }
+        for (const key of Object.keys(Words))
+            check(Words[key], key)
+    }
+
+    function test_plannedDaysReadAsDays() {
+        compare(Words.plannedFor("2026-11-18", "2026-11-18"), "planned for today")
+        compare(Words.plannedFor("2026-11-19", "2026-11-18"), "planned for tomorrow")
+        compare(Words.plannedFor("2026-11-20", "2026-11-18"), "planned for Friday")
+        compare(Words.plannedFor(null, "2026-11-18"), "whenever you're ready")
+        compare(Words.weekdayShort(0), "Mon")
+        compare(Words.weekdayLong(6), "Sunday")
+    }
+
+    function test_everySaveProblemHasWords() {
+        compare(Words.saveProblem("invalid", "sets"), Words.fieldProblem("sets"))
+        compare(Words.saveProblem("limit", "program"), Words.limitReached("program"))
+        compare(Words.saveProblem("network", ""), Words.failure("network"))
+        for (const code of ["not_found", "unavailable", "server", "something new"])
+            verify(Words.saveProblem(code, "").length > 0, code)
+        for (const field of ["title", "note", "sets", "repsMin", "repsMax", "targetWeight", "targetUnit",
+                             "targetSeconds", "targetDistance", "distanceUnit", "restSeconds", "name", "measure",
+                             "primary", "secondary", "equipment", "steps", "upperIncrement", "lowerIncrement",
+                             "daysPerWeek", "days", "exerciseId", "order", "made-up"])
+            verify(Words.fieldProblem(field).length > 0, field)
     }
 }
