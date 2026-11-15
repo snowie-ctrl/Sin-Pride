@@ -67,6 +67,7 @@ qt_add_qml_module(pride_ui
         qml/component/ExerciseTile.qml
         qml/component/FilterPanel.qml
         qml/logic/words.mjs
+        qml/logic/forms.mjs
 )
 target_link_libraries(pride_ui PRIVATE Qt6::Quick Qt6::QuickControls2)
 

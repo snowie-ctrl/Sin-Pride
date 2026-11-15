@@ -230,29 +230,28 @@ void Session::login(const QString &username, const QString &password, const QStr
         m_api.post("/auth", body, [this](const Api::Result &result) {
             setBusy(false);
             if (!result.ok) {
-                QString code = result.object.value("status").toString();
-                if (code.isEmpty() || (code == QLatin1String("error") && result.httpStatus == 0))
+                // Codes only: the Sign-in page words them (words.mjs signInError).
+                const QString status = result.object.value("status").toString();
+                QString code;
+                if (result.httpStatus == 0)
                     code = QStringLiteral("network");
-
-                QString message;
-                if (code == QLatin1String("invalid_credentials"))
-                    message = QStringLiteral("Wrong username or password");
-                else if (code == QLatin1String("invalid_key"))
-                    message = QStringLiteral("That key has been used or does not exist");
-                else if (code == QLatin1String("username_taken"))
-                    message = QStringLiteral("That username is taken");
-                else if (code == QLatin1String("network"))
-                    message = QStringLiteral("Could not reach the server");
+                else if (status == QLatin1String("invalid_credentials") || status == QLatin1String("invalid_key")
+                         || status == QLatin1String("username_taken"))
+                    code = status;
+                else if (result.httpStatus == 400)
+                    code = QStringLiteral("bad_form");
+                else if (result.httpStatus == 429)
+                    code = QStringLiteral("too_many");
                 else
-                    message = result.error;
-
-                emit loginFailed(code, message);
+                    code = QStringLiteral("server");
+                if (code == QLatin1String("server"))
+                    qWarning() << "[auth] sign-in refused:" << result.httpStatus << result.error;
+                emit loginFailed(code);
                 return;
             }
 
             if (!apply(result.object)) {
-                emit loginFailed(QStringLiteral("bad_reply"),
-                                 QStringLiteral("The server sent an unexpected answer"));
+                emit loginFailed(QStringLiteral("bad_reply"));
                 return;
             }
             // Signed in by hand: the reader wants this device signed in, so a
@@ -360,7 +359,7 @@ void Session::loadDevices()
         if (result.ok)
             m_devices = result.object.value("data").toArray().toVariantList();
         else
-            m_devicesError = reasonOf(result);
+            m_devicesError = failureOf(result);
         emit devicesChanged();
     });
 }
@@ -370,7 +369,7 @@ void Session::removeDevice(const QString &id)
     // Devices are named by the opaque id /devices gave (16 hex), which is all the route's path may carry.
     static const QRegularExpression opaque(QStringLiteral("^[0-9a-f]{16}$"));
     if (!opaque.match(id).hasMatch()) {
-        emit accountFailed(QStringLiteral("device"), QStringLiteral("That is not one of your devices"));
+        emit accountFailed(QStringLiteral("device"), QStringLiteral("not_yours"));
         return;
     }
     const int generation = m_generation;
@@ -379,9 +378,8 @@ void Session::removeDevice(const QString &id)
             return;
         if (!result.ok) {
             // The server refuses the device asking: that one signs out.
-            emit accountFailed(QStringLiteral("device"), result.httpStatus == 400
-                                                             ? QStringLiteral("This device signs out instead")
-                                                             : reasonOf(result));
+            emit accountFailed(QStringLiteral("device"), result.httpStatus == 400 ? QStringLiteral("this_device")
+                                                                                   : failureOf(result));
             return;
         }
         emit accountUpdated(QStringLiteral("device"));

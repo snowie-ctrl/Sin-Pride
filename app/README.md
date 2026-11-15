@@ -47,6 +47,6 @@ environment variables set first:
 - `services/`: `Session` (signing in and out, devices), `AccountStore` (the account's folder), `ExerciseStore` (the
   catalog and its pictures on this device), `Catalog` (filters, tiles, search, the open exercise), `Nav`, `Wiring`.
 - `qml/`: `Main.qml`, `NavShell.qml`, `pages/` (Sign-in, Catalog, Exercise), `component/`, `logic/words.mjs` (every
-  word the pages show; `Session`'s sign-in and device errors, and `Api::reasonOf`, are still written in C++ until
-  milestone 2).
+  word the pages show, `Session`'s sign-in and device errors included) and `logic/forms.mjs` (field checks that
+  match the server's).
 - `tests/`: the C++ tests, `qml/` (the QML helper tests), `stub/`.

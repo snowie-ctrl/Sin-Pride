@@ -270,7 +270,7 @@ private slots:
         click(find("usernameField"));
         type("stub");
         click(find("passwordField"));
-        type("nope");
+        type("nope-nope-nope");
         click(find("loginButton"));
         QTRY_VERIFY(findVisible("loginError"));
         QCOMPARE(find("loginError")->property("text").toString(), QStringLiteral("Wrong username or password"));
@@ -294,6 +294,44 @@ private slots:
         QTRY_VERIFY(findVisible("catalogPage"));
         QCOMPARE(lastBodyTo("/auth").value("key").toString(), QStringLiteral("stub-key"));
         QCOMPARE(lastBodyTo("/auth").value("username").toString(), QStringLiteral("newbie"));
+    }
+
+    void aShortPasswordIsCaughtBeforeAnythingIsSent()
+    {
+        server->responses[path("/device/identify")] = R"({"status":"new"})";
+        start();
+        QTRY_VERIFY(findVisible("usernameField"));
+        click(find("usernameField"));
+        type("newbie");
+        click(find("passwordField"));
+        type("short");
+        click(find("keyBox"));
+        QTRY_VERIFY(findVisible("keyField"));
+        click(find("keyField"));
+        type("stub-key");
+        click(find("loginButton"));
+        QTRY_VERIFY(findVisible("loginError"));
+        QCOMPARE(find("loginError")->property("text").toString(), QStringLiteral("A password is 8 to 256 characters"));
+        QVERIFY(requestsTo("/auth").isEmpty());
+    }
+
+    void aTakenUsernameIsWordedByThePage()
+    {
+        server->responses[path("/device/identify")] = R"({"status":"new"})";
+        server->statuses[path("/auth")] = 409;
+        server->responses[path("/auth")] = R"({"status":"username_taken","message":"username_taken"})";
+        start();
+        QTRY_VERIFY(findVisible("usernameField"));
+        click(find("usernameField"));
+        type("taken");
+        click(find("passwordField"));
+        type("long-enough");
+        click(find("keyBox"));
+        QTRY_VERIFY(findVisible("keyField"));
+        click(find("keyField"));
+        type("stub-key");
+        click(find("loginButton"));
+        QTRY_COMPARE(find("loginError")->property("text").toString(), QStringLiteral("That username is taken"));
     }
 
     void noServerAndNoAccountHereShowsTheConnectionScreen()

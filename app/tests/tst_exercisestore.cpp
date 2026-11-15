@@ -145,7 +145,7 @@ private slots:
         server.responses[catalogPath] = R"({"status":"error","message":"busy, try again"})";
         store.refresh();
         QTRY_VERIFY(!store.loading());
-        QCOMPARE(store.error(), QStringLiteral("busy, try again"));
+        QCOMPARE(store.error(), QStringLiteral("server"));
         QCOMPARE(store.count(), 2);
     }
 

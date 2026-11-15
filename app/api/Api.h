@@ -143,11 +143,10 @@ private:
 };
 
 
-// Why a call failed, in the server's own words, or that it did not answer. Every
-// service that shows a failure to the reader words it through this.
-inline QString reasonOf(const Api::Result &result)
+// Why a call failed, as a code the pages put into words (words.mjs failure()): "network" when nothing answered,
+// "server" for an answer that refused. The server's own message is for the log, never the screen, so every word the
+// app shows stays in words.mjs.
+inline QString failureOf(const Api::Result &result)
 {
-    if (result.httpStatus == 0)
-        return QStringLiteral("Could not reach the server");
-    return result.error;
+    return result.httpStatus == 0 ? QStringLiteral("network") : QStringLiteral("server");
 }

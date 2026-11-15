@@ -2,10 +2,12 @@
 import QtQuick
 import QtQuick.Controls
 import "../logic/words.mjs" as Words
+import "../logic/forms.mjs" as Forms
 
 // Signing in, as in Pageturner. A known device never sees the form: identifyDevice is already on its way when this
 // page appears, so it shows "Signing in…" until the answer says the device is new. With no server and nothing
-// saved, it says the server can't be reached, with Try again. A new account also needs a sign-up key.
+// saved, it says the server can't be reached, with Try again. A new account also needs a sign-up key. Session hands
+// it codes; the words are words.mjs's.
 Rectangle {
     id: root
     objectName: "loginPage"
@@ -22,8 +24,9 @@ Rectangle {
     function submit() {
         if (Session.busy)
             return
-        if (username.text.trim().length === 0 || password.text.length === 0) {
-            root.errorText = Words.enterUsernameAndPassword
+        const problem = Forms.signInProblem(username.text, password.text)
+        if (problem) {
+            root.errorText = problem
             return
         }
         if (root.wantsKey && key.text.trim().length === 0) {
@@ -37,8 +40,8 @@ Rectangle {
 
     Connections {
         target: Session
-        function onLoginFailed(code, message) {
-            root.errorText = message
+        function onLoginFailed(code) {
+            root.errorText = Words.signInError(code)
             root.submitted = false
         }
     }

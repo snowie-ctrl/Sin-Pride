@@ -144,7 +144,7 @@ void ExerciseStore::refresh()
     m_api.get(QStringLiteral("/catalog"), query, [this](const Api::Result &result) {
         m_loading = false;
         if (!result.ok) {
-            m_error = reasonOf(result);
+            m_error = failureOf(result);
         } else {
             const QJsonObject data = result.object.value("data").toObject();
             if (!data.value("unchanged").toBool()) {

@@ -17,6 +17,45 @@ export const enterKey = "Enter your sign-up key"
 export const unreachable = "Pride can't be reached right now. Check the connection and try again."
 export const tryAgain = "Try again"
 export const offline = "Pride can't be reached. What's on this device still works."
+export const usernameLength = "A username is 3 to 32 characters"
+export const passwordLength = "A password is 8 to 256 characters"
+
+const signInErrors = {
+    invalid_credentials: "Wrong username or password",
+    invalid_key: "That key has been used or does not exist",
+    username_taken: "That username is taken",
+    bad_form: "A username is 3 to 32 characters and a password 8 to 256",
+    too_many: "Too many tries for now. Wait a minute, then try again.",
+    network: "Pride can't be reached right now. Check the connection and try again.",
+    bad_reply: "Pride answered in a way this app doesn't understand. Try again later.",
+    server: "Pride couldn't sign you in just now. Try again.",
+}
+
+// Session hands the Sign-in page a code (Session::loginFailed); the words live here.
+export function signInError(code) {
+    return signInErrors[code] || signInErrors.server
+}
+
+const deviceErrors = {
+    not_yours: "That isn't one of your devices",
+    this_device: "This is the device you're using. Sign out instead.",
+    network: "Can't reach Pride right now. Try again.",
+    server: "Pride couldn't do that just now. Try again.",
+}
+
+export function deviceError(code) {
+    return deviceErrors[code] || deviceErrors.server
+}
+
+const failures = {
+    network: "Can't reach Pride right now. Nothing was lost; try again.",
+    server: "Pride couldn't do that just now. Try again.",
+}
+
+// Why a save or a load failed (the services' codes; Task 13 adds the rest).
+export function failure(code) {
+    return failures[code] || failures.server
+}
 
 export const navCatalog = "Catalog"
 export const signOut = "Sign out"

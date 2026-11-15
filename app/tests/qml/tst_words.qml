@@ -33,6 +33,17 @@ TestCase {
         compare(Words.creditLine("own", ""), "From own.")
     }
 
+    function test_everySignInCodeHasWords() {
+        for (const code of ["invalid_credentials", "invalid_key", "username_taken", "bad_form", "too_many",
+                            "network", "bad_reply", "server"])
+            verify(Words.signInError(code).length > 0, code)
+        compare(Words.signInError("invalid_credentials"), "Wrong username or password")
+        compare(Words.signInError("something new"), Words.signInError("server"))
+        for (const code of ["not_yours", "this_device", "network", "server"])
+            verify(Words.deviceError(code).length > 0, code)
+        compare(Words.failure("network"), "Can't reach Pride right now. Nothing was lost; try again.")
+    }
+
     function test_theVoiceNeverShames() {
         const banned = ["missed", "fail", "guilt", "lazy", "should have", "behind"]
         for (const key of Object.keys(Words)) {
