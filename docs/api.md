@@ -131,6 +131,29 @@ The first program a person makes is active. Duplicate makes "<title> copy" (60 c
 the same days, routines and items. Deleting the active program leaves none active. A refused field is `400` naming it
 (a blank or over-long `title`, `days` that are not distinct weekdays 0 to 6); an id that is not the person's is `404`.
 
+## Routines and items
+
+A program's routines and their exercises, at `/api/pride/routines` and `/api/pride/routine-items`; every route needs a
+session and sees only that person's. Every write answers with the whole program (see Programs). New routines and items
+go last; a reorder sends the whole new order, refused (`400`, field `order`) unless it lists exactly the program's
+routines (or the routine's items), each once.
+
+| Route | Body | Answer |
+|---|---|---|
+| `POST /routines` | `{programId, title}` | `data: program`; `409` (`status: "limit"`) at 14 routines |
+| `PUT /routines/<id>` | `{title}` | `data: program` |
+| `DELETE /routines/<id>` | | `data: program` (its items go with it) |
+| `POST /routines/reorder` | `{programId, order: [ids]}` | `data: program` |
+| `POST /routine-items` | `{routineId, exerciseId, ...targets?}` | `data: program`; `409` at 30 items |
+| `PUT /routine-items/<id>` | every target field | `data: program` |
+| `DELETE /routine-items/<id>` | | `data: program` |
+| `POST /routine-items/reorder` | `{routineId, order: [ids]}` | `data: program` |
+
+A new item's targets default by its exercise's measure and the person's goal (3 sets of the goal's rep range; 3 x 30 s;
+one set for distance and time); targets sent with it replace those. `PUT` sends every target: one left out is cleared.
+Only exercises in the catalog or the person's own, not hidden, can be added; one hidden later stays in its routines.
+A refused field is `400` naming it; an id that is not the person's is `404`.
+
 ## Admin (`/api/pride-admin`, LAN only)
 
 For the catalog importer (`importer/`). The tunnel never routes this prefix. Every request needs `X-Admin-Token`, the

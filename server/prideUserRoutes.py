@@ -447,3 +447,194 @@ def setProgramDays(programId):
             cur.execute("INSERT INTO ProgramDays (ProgramID, Weekday) VALUES (%s, %s)", (programId, day))
         touch(cur, programId)
         return answerProgram(conn, cur, uid, programId)
+
+
+# ---- Routines and their items. New ones go last (plan decision 15); a reorder sends the whole order (18). ----
+
+def ownedRoutine(cur, uid, routineId):
+    cur.execute("SELECT r.RoutineID, r.ProgramID FROM Routines r JOIN Programs p ON p.ProgramID = r.ProgramID "
+                "WHERE r.RoutineID = %s AND p.UserID = %s FOR UPDATE", (routineId, uid))
+    return cur.fetchone()
+
+
+def ownedItem(cur, uid, itemId):
+    cur.execute("SELECT i.ItemID, i.RoutineID, r.ProgramID, e.Measure FROM RoutineItems i "
+                "JOIN Routines r ON r.RoutineID = i.RoutineID JOIN Programs p ON p.ProgramID = r.ProgramID "
+                "JOIN Exercises e ON e.ExerciseID = i.ExerciseID WHERE i.ItemID = %s AND p.UserID = %s FOR UPDATE",
+                (itemId, uid))
+    return cur.fetchone()
+
+
+# The f-strings in reorder, addItem and editItem only ever hold names from this file (ITEM_COLUMNS, and the table and
+# column names the routes pass), never caller text, so they cannot carry an injection.
+def reorder(cur, table, idColumn, parentColumn, parentId, order):
+    """Writes OrderIndex 0, 1, … in the order given, which must be exactly the parent's rows."""
+    cur.execute(f"SELECT {idColumn} FROM {table} WHERE {parentColumn} = %s", (parentId,))
+    present = sorted(r[idColumn] for r in cur.fetchall())
+    if sorted(order) != present:
+        raise checks.Refusal("order", "order must list every one of them, each once")
+    for index, rowId in enumerate(order):
+        cur.execute(f"UPDATE {table} SET OrderIndex = %s WHERE {idColumn} = %s", (index, rowId))
+
+
+@prideUserBP.route("/routines", methods=["POST"])
+def addRoutine():
+    uid = session.requestUID()
+    data = body()
+    try:
+        programId = checks.idOf(data.get("programId"), "programId")
+        name = checks.title(data.get("title"))
+    except checks.Refusal as refusal:
+        return refuse(refusal)
+    with database() as (conn, cur):
+        if ownedProgram(cur, uid, programId, lock=True) is None:
+            return notFound()
+        cur.execute("SELECT COUNT(*) AS n, MAX(OrderIndex) AS top FROM Routines WHERE ProgramID = %s", (programId,))
+        counted = cur.fetchone()
+        if counted["n"] >= checks.LIMITS["routines"]:
+            return overLimit("routine", f"at most {checks.LIMITS['routines']} routines in a program")
+        nextIndex = 0 if counted["top"] is None else counted["top"] + 1
+        cur.execute("INSERT INTO Routines (ProgramID, Title, OrderIndex) VALUES (%s, %s, %s)", (programId, name, nextIndex))
+        touch(cur, programId)
+        return answerProgram(conn, cur, uid, programId)
+
+
+@prideUserBP.route("/routines/<int:routineId>", methods=["PUT"])
+def renameRoutine(routineId):
+    uid = session.requestUID()
+    try:
+        name = checks.title(body().get("title"))
+    except checks.Refusal as refusal:
+        return refuse(refusal)
+    with database() as (conn, cur):
+        routine = ownedRoutine(cur, uid, routineId)
+        if routine is None:
+            return notFound()
+        cur.execute("UPDATE Routines SET Title = %s WHERE RoutineID = %s", (name, routineId))
+        touch(cur, routine["ProgramID"])
+        return answerProgram(conn, cur, uid, routine["ProgramID"])
+
+
+@prideUserBP.route("/routines/<int:routineId>", methods=["DELETE"])
+def deleteRoutine(routineId):
+    """Its items go with it; past workouts keep their exercises (spec §8)."""
+    uid = session.requestUID()
+    with database() as (conn, cur):
+        routine = ownedRoutine(cur, uid, routineId)
+        if routine is None:
+            return notFound()
+        cur.execute("DELETE FROM Routines WHERE RoutineID = %s", (routineId,))
+        touch(cur, routine["ProgramID"])
+        return answerProgram(conn, cur, uid, routine["ProgramID"])
+
+
+@prideUserBP.route("/routines/reorder", methods=["POST"])
+def reorderRoutines():
+    uid = session.requestUID()
+    data = body()
+    try:
+        programId = checks.idOf(data.get("programId"), "programId")
+        order = checks.idList(data.get("order"))
+    except checks.Refusal as refusal:
+        return refuse(refusal)
+    with database() as (conn, cur):
+        if ownedProgram(cur, uid, programId, lock=True) is None:
+            return notFound()
+        try:
+            reorder(cur, "Routines", "RoutineID", "ProgramID", programId, order)
+        except checks.Refusal as refusal:
+            return refuse(refusal)
+        touch(cur, programId)
+        return answerProgram(conn, cur, uid, programId)
+
+
+def itemValues(targets):
+    return tuple(targets[k] for k in checks.TARGET_FIELDS)
+
+
+@prideUserBP.route("/routine-items", methods=["POST"])
+def addItem():
+    uid = session.requestUID()
+    data = body()
+    try:
+        routineId = checks.idOf(data.get("routineId"), "routineId")
+        exerciseId = checks.idOf(data.get("exerciseId"), "exerciseId")
+    except checks.Refusal as refusal:
+        return refuse(refusal)
+    with database() as (conn, cur):
+        routine = ownedRoutine(cur, uid, routineId)
+        if routine is None:
+            return notFound()
+        exercise = visibleExercise(cur, uid, exerciseId)
+        if exercise is None:
+            return refuse(checks.Refusal("exerciseId", "no such exercise in the catalog or yours"))
+        cur.execute("SELECT COUNT(*) AS n, MAX(OrderIndex) AS top FROM RoutineItems WHERE RoutineID = %s", (routineId,))
+        counted = cur.fetchone()
+        if counted["n"] >= checks.LIMITS["items"]:
+            return overLimit("item", f"at most {checks.LIMITS['items']} exercises in a routine")
+        profile = profileRow(cur, uid)
+        given = {k: data[k] for k in checks.TARGET_FIELDS if k in data}
+        try:
+            targets = checks.itemTargets(exercise["Measure"],
+                                         {**checks.itemDefaults(exercise["Measure"], profile["Goal"], profile["Units"]),
+                                          **given})
+        except checks.Refusal as refusal:
+            return refuse(refusal)
+        nextIndex = 0 if counted["top"] is None else counted["top"] + 1
+        cur.execute(f"INSERT INTO RoutineItems (RoutineID, ExerciseID, OrderIndex, "
+                    f"{', '.join(ITEM_COLUMNS[k] for k in checks.TARGET_FIELDS)}) "
+                    f"VALUES ({', '.join(['%s'] * (3 + len(checks.TARGET_FIELDS)))})",
+                    (routineId, exerciseId, nextIndex, *itemValues(targets)))
+        touch(cur, routine["ProgramID"])
+        return answerProgram(conn, cur, uid, routine["ProgramID"])
+
+
+@prideUserBP.route("/routine-items/<int:itemId>", methods=["PUT"])
+def editItem(itemId):
+    """Every target at once: a field left out is cleared, so the app always sends the row as the person sees it."""
+    uid = session.requestUID()
+    with database() as (conn, cur):
+        item = ownedItem(cur, uid, itemId)
+        if item is None:
+            return notFound()
+        try:
+            targets = checks.itemTargets(item["Measure"], body())
+        except checks.Refusal as refusal:
+            return refuse(refusal)
+        cur.execute(f"UPDATE RoutineItems SET {', '.join(f'{ITEM_COLUMNS[k]} = %s' for k in checks.TARGET_FIELDS)} "
+                    "WHERE ItemID = %s", (*itemValues(targets), itemId))
+        touch(cur, item["ProgramID"])
+        return answerProgram(conn, cur, uid, item["ProgramID"])
+
+
+@prideUserBP.route("/routine-items/<int:itemId>", methods=["DELETE"])
+def deleteItem(itemId):
+    uid = session.requestUID()
+    with database() as (conn, cur):
+        item = ownedItem(cur, uid, itemId)
+        if item is None:
+            return notFound()
+        cur.execute("DELETE FROM RoutineItems WHERE ItemID = %s", (itemId,))
+        touch(cur, item["ProgramID"])
+        return answerProgram(conn, cur, uid, item["ProgramID"])
+
+
+@prideUserBP.route("/routine-items/reorder", methods=["POST"])
+def reorderItems():
+    uid = session.requestUID()
+    data = body()
+    try:
+        routineId = checks.idOf(data.get("routineId"), "routineId")
+        order = checks.idList(data.get("order"))
+    except checks.Refusal as refusal:
+        return refuse(refusal)
+    with database() as (conn, cur):
+        routine = ownedRoutine(cur, uid, routineId)
+        if routine is None:
+            return notFound()
+        try:
+            reorder(cur, "RoutineItems", "ItemID", "RoutineID", routineId, order)
+        except checks.Refusal as refusal:
+            return refuse(refusal)
+        touch(cur, routine["ProgramID"])
+        return answerProgram(conn, cur, uid, routine["ProgramID"])
