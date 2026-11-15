@@ -15,7 +15,7 @@ CREATE TABLE Users (
   UNIQUE KEY ux_users_username (Username)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
--- A device that signs in by itself. Its last sign-in is read from its newest session.
+-- A device that signs in by itself. Its last sign-in is its newest session's CreatedAt.
 CREATE TABLE Devices (
   Fingerprint VARCHAR(255) NOT NULL,
   UserID INT NOT NULL,
@@ -29,6 +29,7 @@ CREATE TABLE Sessions (
   UserID INT NOT NULL,
   DeviceFingerprint VARCHAR(255) NOT NULL,
   ExpiresAt DATETIME NOT NULL,
+  CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (Token),
   KEY ix_sessions_user (UserID),
   CONSTRAINT fk_sessions_user FOREIGN KEY (UserID) REFERENCES Users (UserID) ON DELETE CASCADE
@@ -180,6 +181,7 @@ CREATE TABLE Routines (
   CONSTRAINT fk_routines_program FOREIGN KEY (ProgramID) REFERENCES Programs (ProgramID) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+-- An exercise is never deleted from under a routine: the own-exercise delete takes it out of routines first (prideUserRoutes).
 CREATE TABLE RoutineItems (
   ItemID INT NOT NULL AUTO_INCREMENT,
   RoutineID INT NOT NULL,
@@ -208,7 +210,7 @@ CREATE TABLE RoutineItems (
   CONSTRAINT ck_routineitems_distanceunit CHECK (DistanceUnit IS NULL OR DistanceUnit IN ('km', 'mi', 'm')),
   CONSTRAINT ck_routineitems_rest CHECK (RestSeconds IS NULL OR RestSeconds BETWEEN 0 AND 3600),
   CONSTRAINT fk_routineitems_routine FOREIGN KEY (RoutineID) REFERENCES Routines (RoutineID) ON DELETE CASCADE,
-  CONSTRAINT fk_routineitems_exercise FOREIGN KEY (ExerciseID) REFERENCES Exercises (ExerciseID) ON DELETE CASCADE
+  CONSTRAINT fk_routineitems_exercise FOREIGN KEY (ExerciseID) REFERENCES Exercises (ExerciseID)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- ---- Workouts (milestone 3): sets keep the number and unit as entered; history outlives the plan ----

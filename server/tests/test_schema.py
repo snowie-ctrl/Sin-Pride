@@ -133,3 +133,14 @@ def test_noCheckTouchesAColumnAForeignKeyActsOn():
         for check in re.findall(r"CHECK \((.*)\)", text):
             for column in acted:
                 assert not re.search(rf"\b{column}\b", check), (table, column)
+
+
+def test_aSessionKnowsWhenItWasMade():
+    """A device's last sign-in is its newest session's CreatedAt (devices), not expiry minus a guessed length."""
+    assert "CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP" in block("Sessions")
+
+
+def test_nothingCascadesFromAnExerciseIntoRoutines():
+    """Deleting an own exercise takes it out of routines in the route, on purpose; a cascade would do it silently."""
+    planned = [line for line in block("RoutineItems").splitlines() if "REFERENCES Exercises" in line]
+    assert planned and "ON DELETE" not in planned[0]

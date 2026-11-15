@@ -25,7 +25,7 @@ routes are below; each later milestone adds its own.
 | `POST /device/identify` | `{fingerprint}` | known device: `{status:"ok", UID, username, token}`; unknown: `{status:"new"}`; `400 "missing fingerprint"` when none is sent |
 | `POST /auth` | `{username, password, fingerprint, key?}` | `{status:"ok", UID, username, token}`. With `key` it signs up (and makes the person's profile, intro pending): `403 invalid_key` for an unknown or used key, `409 username_taken`, `400` for a username outside 3–32 characters or a password outside 8–256. Without `key`: `401 invalid_credentials` (also for an unknown username or a password over 256 characters). |
 | `POST /signout` | none | `{status:"ok"}`. The server reads no body: the device is the one the presented session was made for (a fingerprint sent anyway is ignored), so only that device is forgotten and its sessions end, and the presented session always ends. There is no `400`; the session is the only thing it needs. |
-| `GET /devices` | | `data: [{id, label, current, lastSignIn}]`, newest first. `id` is the first 16 hex of the fingerprint's SHA-256; the fingerprint itself never leaves the server. |
+| `GET /devices` | | `data: [{id, label, current, lastSignIn}]`, newest first. `id` is the first 16 hex of the fingerprint's SHA-256; the fingerprint itself never leaves the server. `lastSignIn` is when the device's newest session began (null when it has none). |
 | `DELETE /devices/<id>` | | `{status:"ok"}`, that device signed out and forgotten (an id that is none of this person's devices is nothing to remove, also `ok`); `400` for the device asking (it signs out instead); `404` for an id that is not 16 hex |
 
 ## Catalog
