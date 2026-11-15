@@ -467,3 +467,37 @@ Each milestone is planned and built in its own fresh session.
 - A LICENSE file: none means all rights reserved, as in Gluttony.
 - Creating the tunnel hostname before milestone 4, as for Gluttony.
 - Decided 2026-11-05: palette P1 (the starting values), Cinzel for headings, Today layout T1 (Throne) and Log a workout layout L2 (Cards), from the milestone 1 mockups.
+
+## Carried from milestone 1
+
+Found while building milestone 1 (2026-11-05) and left for the milestone named. The schema is created once, so the
+schema items must be settled before milestone 4 loads it.
+
+**Milestone 2:**
+- **Words in C++.** Session's sign-in and device errors (and `Api::reasonOf`) are still written in C++, and the Sign-in
+  page shows server messages as sent. Milestone 2 starts by mapping each error code to a word in `words.mjs` (the
+  Sign-in page for sign-in, Settings for devices), adding `forms.mjs` checks for username 3–32 and password 8–256
+  before sending, and updating `tst_session`.
+- **`lastSignIn`** is derived from the newest session's expiry minus 30 days. Decide before the schema is loaded
+  whether `Sessions` needs a `CreatedAt` column (Settings shows devices).
+- **Deleting an own exercise.** `RoutineItems.ExerciseID` cascades while `WorkoutExercises.ExerciseID` restricts.
+  Settle this with the own-exercise delete, before the schema is loaded.
+- **Tests to add:** the offline banner is hidden while online; a 401 mid-session lands on Sign-in.
+- **Catalog page:** "isn't on this device yet" can flash before the first refresh starts; a tile caption with no
+  primary muscle starts with " · ".
+- **Ctrl+K:** the open list does not refresh when the catalog changes underneath it.
+
+**Milestone 3:**
+- `Suggestions.ProposedRepsMin/Max` have no range `CHECK`; add it before the schema is loaded.
+
+**Milestone 4 (rollout):**
+- A real-MySQL smoke test and one live `GET /catalog`: the server's SQL has only met the test fake.
+- Run the first real import before any app is pointed at the live server: an empty catalog answer
+  (`version: null`) replaces the app's copy.
+- The importer's picture cache keeps any 200 answer; if a bad picture is cached, delete `importer/cache/` and run
+  again.
+- Optional: store session tokens hashed (SHA-256 fits `CHAR(64)`).
+- The device fingerprint signs a device in and travels on every request, including over the LAN's plain HTTP.
+  Think about this before the iOS part.
+- The release package carries `secrets.json` beside the exe; it must never be committed.
+- `tools/check-public.ps1` does not read binary files; strip metadata from new images before committing them.
