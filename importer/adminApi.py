@@ -31,7 +31,7 @@ def _request(method, path, json=None, data=None, timeout=120):
     for attempt in range(RETRIES):
         try:
             answer = _http.request(method, f"{config.ADMIN_BASE}/api/pride-admin{path}", json=json, data=data,
-                                   headers=headers, timeout=timeout)
+                                   headers=headers, timeout=timeout, allow_redirects=False)
         except requests.RequestException as error:
             last = type(error).__name__
         else:

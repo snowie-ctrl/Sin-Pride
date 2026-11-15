@@ -54,3 +54,12 @@ def test_aRefusalIsFinalAtOnceAndNamesNoAddress(configured, monkeypatch):
         adminApi.post("/import", {})
     assert len(calls) == 1 and "would hide 2 of 10" in str(raised.value)
     assert "admin.example.test" not in str(raised.value)
+
+
+def test_aRedirectIsRefusedAndNeverFollowed(configured, monkeypatch):
+    calls = []
+    monkeypatch.setattr(adminApi._http, "request",
+                        lambda *a, **kw: calls.append(kw) or Answer(302, None))
+    with pytest.raises(adminApi.AdminError, match="302"):
+        adminApi.get("/state")
+    assert len(calls) == 1 and calls[0]["allow_redirects"] is False
