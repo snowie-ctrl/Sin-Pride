@@ -6,10 +6,12 @@ only reads and writes. Every refusal names the field: 400 {status:"error", field
 person's is 404; a limit is 409 {status:"limit", field, message} (plan decision 17). docs/api.md is the contract.
 """
 import secrets
+from datetime import timedelta
 
 from flask import Blueprint, jsonify, request
 
-from . import prideCatalog as catalog, prideChecks as checks, prideSession as session, prideStarters as starters
+from . import (prideCatalog as catalog, prideChecks as checks, prideRules as rules, prideSession as session,
+               prideStarters as starters)
 
 prideUserBP = Blueprint("prideUser", __name__)
 session.install(prideUserBP)
@@ -698,3 +700,49 @@ def adoptStarter(key):
                             (routineId, item["exerciseId"], order, item["sets"], item["repsMin"], item["repsMax"],
                              item["targetSeconds"], item["restSeconds"]))
         return answerProgram(conn, cur, uid, programId)
+
+
+# ---- Today (spec §5, §6; plan decisions 21–23) ----
+
+@prideUserBP.route("/today", methods=["GET"])
+def today():
+    """Next up in the active program, the next planned day and the week strip, for the date the app sends: the
+    person's own local date, which the server never guesses (plan decision 21)."""
+    uid = session.requestUID()
+    try:
+        day = checks.isoDate(request.args.get("date"))
+    except checks.Refusal as refusal:
+        return refuse(refusal)
+    with database() as (conn, cur):
+        cur.execute("SELECT WeekStart FROM Profiles WHERE UserID = %s", (uid,))
+        weekStart = (cur.fetchone() or {}).get("WeekStart", "mon")
+        cur.execute("SELECT ProgramID, Title FROM Programs WHERE UserID = %s AND IsActive = 1 LIMIT 1", (uid,))
+        program = cur.fetchone()
+        first = rules.weekStartDate(day, weekStart)
+        cur.execute("SELECT DISTINCT PerformedOn FROM Workouts WHERE UserID = %s AND PerformedOn BETWEEN %s AND %s",
+                    (uid, first, first + timedelta(days=6)))
+        done = {r["PerformedOn"] for r in cur.fetchall()}
+        if program is None:
+            return ok({"program": None, "nextUp": None, "plannedDay": None,
+                       "week": rules.week(day, weekStart, set(), done)})
+        programId = program["ProgramID"]
+        cur.execute("SELECT Weekday FROM ProgramDays WHERE ProgramID = %s", (programId,))
+        weekdays = {r["Weekday"] for r in cur.fetchall()}
+        cur.execute("SELECT RoutineID, Title FROM Routines WHERE ProgramID = %s ORDER BY OrderIndex, RoutineID",
+                    (programId,))
+        routines = cur.fetchall()
+        cur.execute("SELECT RoutineID FROM Workouts WHERE UserID = %s AND ProgramID = %s "
+                    "ORDER BY PerformedOn DESC, CreatedAt DESC, WorkoutID DESC LIMIT 1", (uid, programId))
+        latest = (cur.fetchone() or {}).get("RoutineID")
+        nextId = rules.nextUp([r["RoutineID"] for r in routines], latest)
+        nextUp = None
+        if nextId is not None:
+            cur.execute("SELECT ItemID, RoutineID, ExerciseID, Sets, RepsMin, RepsMax, TargetWeight, TargetUnit, "
+                        "TargetSeconds, TargetDistance, DistanceUnit, RestSeconds, Note FROM RoutineItems "
+                        "WHERE RoutineID = %s ORDER BY OrderIndex, ItemID", (nextId,))
+            nextUp = {"routineId": nextId, "title": next(r["Title"] for r in routines if r["RoutineID"] == nextId),
+                      "items": [itemJson(r) for r in cur.fetchall()]}
+        planned = rules.plannedDay(day, weekdays, day in done) if routines else None
+    return ok({"program": {"id": programId, "title": program["Title"]}, "nextUp": nextUp,
+               "plannedDay": planned.isoformat() if planned else None,
+               "week": rules.week(day, weekStart, weekdays if routines else set(), done)})

@@ -163,6 +163,14 @@ A refused field is `400` naming it; an id that is not the person's is `404`.
 
 Each starter is filled for the caller: the variant their equipment allows (gym, dumbbell, bodyweight), the planned weekdays for their days a week, 3 sets of their goal's rep range (timed items keep their own seconds), 90 s rest for weight × reps and 60 s otherwise. An exercise not in the catalog is left out and listed in `missing`. `suggested` marks the starter for their days a week. Adopting makes a new program, the active one.
 
+## Today
+
+| Route | Body | Answer |
+|---|---|---|
+| `GET /today?date=YYYY-MM-DD` | | `data: {program, nextUp, plannedDay, week}`; `400` naming `date` when it is missing or not a date |
+
+`date` is the app's local date. `nextUp` is the routine after the latest workout's in the active program (by rotation, wrapping round), or the first. `plannedDay` is the first planned weekday from `date`, `date` itself unless a workout is already logged that day. `week` is the 7 days from the profile's week start holding `date`: `done` when any workout is logged that day; `planned` only on `date` and later and never on a done day. Milestone 3 adds last time's sets, open suggestions and the latest crowns.
+
 ## Admin (`/api/pride-admin`, LAN only)
 
 For the catalog importer (`importer/`). The tunnel never routes this prefix. Every request needs `X-Admin-Token`, the
