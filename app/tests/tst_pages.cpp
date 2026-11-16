@@ -15,6 +15,7 @@
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QUrlQuery>
 #include <QtQml/QQmlExtensionPlugin>
 
 #include <memory>
@@ -365,15 +366,110 @@ private slots:
 
     // ---- Sign-in and the shell ----
 
-    // Until the Today page exists (a later task's) the shell shows nothing for today-page, so this checks where Nav
-    // is and what was asked for.
     void aKnownDeviceLandsOnTodayAndLoadsWhatIsTheirs()
     {
         start();
         QTRY_VERIFY(findVisible("navShell"));
         QCOMPARE(nav->currentPage(), QStringLiteral("today-page"));
+        QTRY_VERIFY(findVisible("todayPage"));
         for (const char *route : {"/catalog", "/profile", "/programs", "/today", "/exercises"})
             QTRY_COMPARE(requestsTo(route).size(), 1);
+    }
+
+    static QByteArray todayJson(const char *items, const char *planned = R"("2026-11-19")")
+    {
+        return QByteArray(R"({"status":"ok","data":{"program":{"id":5,"title":"Upper/Lower"},
+ "nextUp":{"routineId":51,"title":"Lower","items":)") + items + R"(},"plannedDay":)" + planned + R"(,"week":[
+ {"date":"2026-11-16","weekday":0,"planned":false,"done":true},{"date":"2026-11-17","weekday":1,"planned":false,"done":false},
+ {"date":"2026-11-18","weekday":2,"planned":false,"done":false},{"date":"2026-11-19","weekday":3,"planned":true,"done":false},
+ {"date":"2026-11-20","weekday":4,"planned":true,"done":false},{"date":"2026-11-21","weekday":5,"planned":false,"done":false},
+ {"date":"2026-11-22","weekday":6,"planned":false,"done":false}]}})";
+    }
+
+    static const char *curlItem()
+    {
+        return R"([{"id":510,"exerciseId":1,"sets":3,"repsMin":8,"repsMax":12,"targetWeight":135,"targetUnit":"lb",
+  "targetSeconds":null,"targetDistance":null,"distanceUnit":null,"restSeconds":90,"note":null}])";
+    }
+
+    // ---- Today ----
+
+    void todayShowsNextUpWithItsTargets()
+    {
+        server->responses[path("/today")] = todayJson(curlItem());
+        startOnToday();
+        QTRY_VERIFY(findVisible("nextUpCard"));
+        QCOMPARE(find("nextUpTitle")->property("text").toString(), QStringLiteral("Lower"));
+        QCOMPARE(find("nextUpWhen")->property("text").toString(), QStringLiteral("· planned for Thursday"));
+        QTRY_COMPARE(countVisible("todayItem"), 1);
+        QCOMPARE(find("todayItemName")->property("text").toString(), QStringLiteral("Barbell Curl"));
+        QCOMPARE(find("todayItemTarget")->property("text").toString(), QStringLiteral("3 × 8–12 · 135 lb"));
+        QVERIFY(!findVisible("todayItemGone"));
+    }
+
+    void withNoPlannedDaysItIsWheneverYoureReady()
+    {
+        server->responses[path("/today")] = todayJson(curlItem(), "null");
+        startOnToday();
+        QTRY_COMPARE(find("nextUpWhen")->property("text").toString(), QStringLiteral("· whenever you're ready"));
+    }
+
+    void theWeekStripShowsDoneAndPlannedAndNeverAMiss()
+    {
+        server->responses[path("/today")] = todayJson(curlItem());
+        startOnToday();
+        QTRY_VERIFY(findVisible("dayCell-0"));
+        QVERIFY(find("dayCell-0")->property("done").toBool());
+        QVERIFY(find("dayCell-1")->property("isToday").toBool());
+        QVERIFY(find("dayCell-3")->property("planned").toBool());
+        // Wednesday is neither done nor planned: no marker at all, and no word for it.
+        QVERIFY(!findIn(find("dayCell-2"), "dayMarker", true));
+    }
+
+    void todayAsksWithTheAppsOwnDate()
+    {
+        startOnToday();
+        QTRY_VERIFY(!requestsTo("/today").isEmpty());
+        QCOMPARE(QUrlQuery(requestsTo("/today").last()).queryItemValue("date"), QStringLiteral("2026-11-17"));
+    }
+
+    void withNoProgramTodayOffersTheIntroAndAnEmptyProgram()
+    {
+        server->methodResponses["POST " + path("/programs")] = programJson();
+        startOnToday();
+        QTRY_VERIFY(findVisible("noProgramCard"));
+        QVERIFY(findVisible("todayShowIntro"));
+        click(find("todayEmptyProgram"));
+        QTRY_COMPARE(lastBodyTo("POST", "/programs"), QJsonObject({{"title", "My program"}}));
+        QTRY_COMPARE(nav->currentPage(), QStringLiteral("programs-page"));
+    }
+
+    void programsButNoneActiveAsksToPickOne()
+    {
+        server->responses[path("/programs")] = R"({"status":"ok","data":[{"id":6,"title":"Mine","active":false,
+ "starterKey":null,"days":[],"routineCount":0,"updatedAt":"2026-11-14T09:00:00Z"}]})";
+        startOnToday();
+        QTRY_VERIFY(findVisible("pickProgramCard"));
+        QVERIFY(!findVisible("noProgramCard"));
+    }
+
+    void aRemovedExerciseIsNamedAndMarked()
+    {
+        server->responses[path("/today")] = todayJson(R"([{"id":511,"exerciseId":9,"sets":3,"repsMin":8,"repsMax":12,
+ "targetWeight":null,"targetUnit":null,"targetSeconds":null,"targetDistance":null,"distanceUnit":null,"restSeconds":null,"note":null}])");
+        startOnToday();
+        QTRY_COMPARE(countVisible("todayItem"), 1);
+        QCOMPARE(find("todayItemName")->property("text").toString(), QStringLiteral("Old Row"));
+        QVERIFY(findVisible("todayItemGone"));
+    }
+
+    void noLogButtonOrCrownsYet()
+    {
+        server->responses[path("/today")] = todayJson(curlItem());
+        startOnToday();
+        QTRY_VERIFY(findVisible("nextUpCard"));
+        QVERIFY(!find("logThisWorkout"));
+        QVERIFY(!find("crownsRow"));
     }
 
     // ---- The shell and Settings ----
@@ -598,7 +694,7 @@ private slots:
         click(find("keyField"));
         type("stub-key");
         click(find("loginButton"));
-        QTRY_VERIFY(findVisible("catalogPage"));
+        QTRY_VERIFY(findVisible("todayPage"));
         QCOMPARE(lastBodyTo("/auth").value("key").toString(), QStringLiteral("stub-key"));
         QCOMPARE(lastBodyTo("/auth").value("username").toString(), QStringLiteral("newbie"));
     }
@@ -664,6 +760,7 @@ private slots:
         // The tunnel's own page for a server that is down: the app is offline, and says so under the top bar.
         server->statuses[path("/catalog")] = 502;
         server->responses[path("/catalog")] = "<html>origin unreachable</html>";
+        nav->setStartPage("catalog-page");
         start();
         QTRY_VERIFY(findVisible("catalogPage"));
         QTRY_VERIFY(findVisible("offlineBanner"));
@@ -691,6 +788,7 @@ private slots:
     void theCatalogNeverSaysUnavailableBeforeItsFirstAnswer()
     {
         server->holdNext[path("/catalog")] = 1;
+        nav->setStartPage("catalog-page");
         start();
         QTRY_VERIFY(findVisible("catalogPage"));
         QTRY_COMPARE(requestsTo("/catalog").size(), 1);
@@ -746,6 +844,7 @@ private slots:
         accounts->close();
         api->setBases(QString(), QStringLiteral("http://127.0.0.1:1/api/pride"));
         api->setPingDelays(60000, 60000);
+        nav->setStartPage("catalog-page");
         start();
         QTRY_VERIFY_WITH_TIMEOUT(findVisible("catalogUnavailable"), 10000);
         QVERIFY(findVisible("catalogRetry"));

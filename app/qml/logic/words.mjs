@@ -263,3 +263,20 @@ export const introLoading = "Picking a starter for you…"
 export const introPlanned = "Planned for"
 export const myProgram = "My program"
 export function introStepOf(n) { return `Step ${n} of 4` }
+
+// ---- Today ----
+export const navTodayTitle = "Today"
+export const nextUp = "Next up"
+export const thisWeek = "This week"
+export const today = "Today"
+export const dayDone = "Done"
+export const dayPlanned = "Planned"
+export const leftCatalog = "left the catalog"
+export const todayLoadingText = "Looking at your week…"
+export const todayUnavailable = "Today can't be loaded right now."
+export const noProgram = "No program yet. Take the four questions, or start with an empty one."
+export const showIntro = "Show me the introduction"
+export const startEmptyProgram = "Start an empty program"
+export const pickProgram = "None of your programs is the one you're following. Pick one."
+export const openPrograms = "Open Programs"
+export function noRoutinesYet(title) { return `${title} has no routines yet.` }

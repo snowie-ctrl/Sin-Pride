@@ -17,7 +17,7 @@ Rectangle {
     property string lastListPage: "catalog-page"
 
     // Each page adds its own entry here.
-    readonly property var pageComponents: ({ "catalog-page": catalogPage, "exercise-page": exercisePage,
+    readonly property var pageComponents: ({ "today-page": todayPage, "catalog-page": catalogPage, "exercise-page": exercisePage,
                                          "settings-page": settingsPage })
     readonly property string startPage: root.pageComponents[Nav.currentPage] !== undefined ? Nav.currentPage : "catalog-page"
 
@@ -38,6 +38,7 @@ Rectangle {
         }
     }
 
+    Component { id: todayPage; TodayPage {} }
     Component { id: catalogPage; CatalogPage {} }
     Component { id: settingsPage; SettingsPage {} }
     Component { id: exercisePage; ExercisePage { onBackRequested: Nav.navigateTo(root.lastListPage) } }
