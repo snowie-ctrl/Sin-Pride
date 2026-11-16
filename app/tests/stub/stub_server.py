@@ -404,7 +404,7 @@ def addOwnExercise():
         clean = checks.ownExercise(body())
     except checks.Refusal as refusal:
         return refuse(refusal)
-    if len(who["own"]) >= checks.LIMITS["own"]:
+    if sum(1 for e in who["own"].values() if not e["removed"]) >= checks.LIMITS["own"]:
         return overLimit("exercise", f"at most {checks.LIMITS['own']} exercises of your own")
     exerciseId = newId(who)
     who["own"][exerciseId] = ownJson(exerciseId, f"own-{exerciseId}", clean)
@@ -420,7 +420,7 @@ def editOwnExercise(exerciseId):
     except checks.Refusal as refusal:
         return refuse(refusal)
     old = who["own"].get(exerciseId)
-    if old is None:
+    if old is None or old["removed"]:
         return notFound()
     used = any(i["exerciseId"] == exerciseId for p in who["programs"].values() for r in p["routines"] for i in r["items"])
     if clean["measure"] != old["measure"] and used:
@@ -433,7 +433,7 @@ def editOwnExercise(exerciseId):
 @locked
 def deleteOwnExercise(exerciseId):
     who = person()
-    if exerciseId not in who["own"]:
+    if exerciseId not in who["own"] or who["own"][exerciseId]["removed"]:
         return notFound()
     touched = 0
     for program in who["programs"].values():

@@ -358,3 +358,15 @@ def test_theSeedHasHistoryStepUpsAndStalls(client, monkeypatch):
     assert "increase" in kinds
     if any(len(items) >= 2 for items in drafts):
         assert "stall" in kinds
+
+
+def test_aHiddenOwnExerciseIsNotFoundToEditOrDelete(client):
+    own = client.post(API + "/exercises", json={"name": "Sandbag Carry", "measure": "time", "primary": ["forearms"],
+                                                "equipment": ["other"]}, headers=AUTH).get_json()["data"]
+    client.post(API + "/workouts", headers=AUTH, json={
+        "clientId": str(uuid.uuid4()), "performedOn": "2026-11-16", "routineId": None, "note": None,
+        "exercises": [{"exerciseId": own["id"], "sets": [{"seconds": 60}]}]})
+    assert client.delete(f"{API}/exercises/{own['id']}", headers=AUTH).get_json()["data"]["hidden"] is True
+    edit = {"name": "Renamed", "measure": "time", "primary": ["forearms"], "equipment": ["other"]}
+    assert client.put(f"{API}/exercises/{own['id']}", json=edit, headers=AUTH).status_code == 404
+    assert client.delete(f"{API}/exercises/{own['id']}", headers=AUTH).status_code == 404
