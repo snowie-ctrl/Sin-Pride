@@ -515,7 +515,7 @@ Rectangle {
                                     label: Words.timeLabel
                                     NumberField {
                                         id: distanceSecondsField
-                                        objectName: "itemSeconds"
+                                        objectName: "itemDistanceSeconds"
                                         text: row.seconds(row.modelData.targetSeconds)
                                         onEditingFinished: row.commit()
                                     }

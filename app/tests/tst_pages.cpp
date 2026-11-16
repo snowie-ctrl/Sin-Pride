@@ -184,6 +184,14 @@ class TestPages : public QObject
         }
     }
 
+    // A page lays itself out in the frame after it appears; tests that map an item to the window wait for that first.
+    void settle()
+    {
+        QSignalSpy framed(window(), &QQuickWindow::frameSwapped);
+        window()->update();
+        framed.wait(250);
+    }
+
     void click(QQuickItem *item)
     {
         QVERIFY(item);
@@ -611,6 +619,8 @@ private slots:
     {
         startOnPrograms();
         server->methodResponses["POST " + path("/routines/reorder")] = programJson();
+        settle();
+        settle();
         QQuickItem *grip = find("routineGrip");
         QVERIFY(grip);
         QQuickItem *row = find("routineRow");
@@ -1248,7 +1258,10 @@ private slots:
         QTRY_COMPARE(countVisible("pickerRow"), 1);
         click(find("pickerEverything"));
         QTRY_COMPARE(countVisible("pickerRow"), 3);
-        click(find("pickerRow"));
+        // The rows are replaced as the list grows; the click waits for the new ones to be laid out.
+        settle();
+        QTRY_VERIFY(findVisible("pickerRow") && findVisible("pickerRow")->height() > 0);
+        click(findVisible("pickerRow"));
         QTRY_COMPARE(lastBodyTo("POST", "/routine-items"), QJsonObject({{"routineId", 50}, {"exerciseId", 1}}));
         QTRY_VERIFY(!findVisible("exercisePicker"));
     }
@@ -1292,6 +1305,138 @@ private slots:
         server->methodResponses["PUT " + path("/routines/50")] = programJson();
         replaceText("routineNameField", "Upper A");
         QTRY_COMPARE(lastBodyTo("PUT", "/routines/50"), QJsonObject({{"title", "Upper A"}}));
+    }
+
+    // The program with routine 50's one item replaced by `item` (an item's JSON).
+    static QByteArray programWithItem(const QByteArray &item)
+    {
+        QByteArray answer = programJson();
+        const QByteArray tail = R"("note":null})";
+        const int start = answer.indexOf(R"({"id":500)");
+        const int end = answer.indexOf(tail, start) + tail.size();
+        answer.replace(start, end - start, item);
+        return answer;
+    }
+
+    // Pullups (7) as a distance item holding 5 in `unit` and `seconds` (JSON text) for its time.
+    static QByteArray distanceItem(const QByteArray &seconds, const QByteArray &unit)
+    {
+        return "{\"id\":500,\"exerciseId\":7,\"sets\":1,\"repsMin\":null,\"repsMax\":null,\"targetWeight\":null,"
+               "\"targetUnit\":null,\"targetSeconds\":" + seconds + ",\"targetDistance\":5,\"distanceUnit\":\"" + unit
+               + "\",\"restSeconds\":null,\"note\":null}";
+    }
+
+    // Kettlebell Halo (5) becomes a timed exercise and Pullups (7) a distance one, which the fixture has none of.
+    void makeTimedAndDistanceExercises()
+    {
+        QByteArray changed = catalogJson();
+        const QByteArray halo = R"("measure":"weight_reps","region":"upper","removed":false,
+  "primary":["shoulders"])";
+        const QByteArray pullups = R"("measure":"reps","region":"upper","removed":false,
+  "primary":["lats"])";
+        QVERIFY(changed.contains(halo) && changed.contains(pullups));
+        changed.replace(halo, QByteArray(halo).replace("weight_reps", "time"));
+        changed.replace(pullups, QByteArray(pullups).replace("\"reps\"", "\"distance_time\""));
+        server->responses[path("/catalog")] = changed;
+    }
+
+    void aTimeRowSavesItsSeconds()
+    {
+        makeTimedAndDistanceExercises();
+        startInTheEditor(programWithItem(R"({"id":500,"exerciseId":5,"sets":3,"repsMin":null,"repsMax":null,"targetWeight":null,"targetUnit":null,"targetSeconds":30,"targetDistance":null,"distanceUnit":null,"restSeconds":null,"note":null})"));
+        QCOMPARE(find("itemSeconds")->property("text").toString(), QStringLiteral("0:30"));
+        QVERIFY(!findVisible("itemWeight"));
+        server->methodResponses["PUT " + path("/routine-items/500")] = programJson();
+        replaceText("itemSeconds", "1:30");
+        QTRY_COMPARE(requestsTo("PUT", "/routine-items/500").size(), 1);
+        const QJsonObject sent = lastBodyTo("PUT", "/routine-items/500");
+        QCOMPARE(sent.value("targetSeconds").toInt(), 90);
+        QCOMPARE(sent.value("sets").toInt(), 3);
+        QVERIFY(sent.value("repsMin").isNull() && sent.value("targetWeight").isNull());
+    }
+
+    void aDistanceRowSavesDistanceUnitAndSeconds()
+    {
+        makeTimedAndDistanceExercises();
+        const QByteArray item = R"({"id":500,"exerciseId":7,"sets":1,"repsMin":null,"repsMax":null,"targetWeight":null,"targetUnit":null,"targetSeconds":null,"targetDistance":null,"distanceUnit":null,"restSeconds":null,"note":null})";
+        startInTheEditor(programWithItem(item));
+        QVERIFY(findVisible("itemDistance") && findVisible("itemDistanceSeconds"));
+        QVERIFY(!findVisible("itemSeconds") && !findVisible("itemWeight"));
+        // Each answer is the program as the server would now hold it, so the rebuilt row is still a distance row.
+        server->methodResponses["PUT " + path("/routine-items/500")] = programWithItem(distanceItem("null", "mi"));
+        replaceText("itemDistance", "5");
+        QTRY_COMPARE(requestsTo("PUT", "/routine-items/500").size(), 1);
+        // The profile counts in pounds, so the distance starts in miles.
+        QJsonObject sent = lastBodyTo("PUT", "/routine-items/500");
+        QCOMPARE(sent.value("targetDistance").toDouble(), 5.0);
+        QCOMPARE(sent.value("distanceUnit").toString(), QStringLiteral("mi"));
+        QVERIFY(sent.value("targetSeconds").isNull());
+        server->methodResponses["PUT " + path("/routine-items/500")] = programWithItem(distanceItem("1500", "mi"));
+        settle();
+        replaceText("itemDistanceSeconds", "25:00");
+        QTRY_COMPARE(requestsTo("PUT", "/routine-items/500").size(), 2);
+        sent = lastBodyTo("PUT", "/routine-items/500");
+        QCOMPARE(sent.value("targetSeconds").toInt(), 1500);
+        QCOMPARE(sent.value("targetDistance").toDouble(), 5.0);
+        server->methodResponses["PUT " + path("/routine-items/500")] = programWithItem(distanceItem("1500", "km"));
+        settle();
+        click(find("itemDistanceUnit-km"));
+        QTRY_COMPARE(requestsTo("PUT", "/routine-items/500").size(), 3);
+        QCOMPARE(lastBodyTo("PUT", "/routine-items/500").value("distanceUnit").toString(), QStringLiteral("km"));
+    }
+
+    void choosingTheWeightUnitSendsIt()
+    {
+        startInTheEditor();
+        server->methodResponses["PUT " + path("/routine-items/500")] = programJson();
+        click(find("itemUnit-kg"));
+        QTRY_COMPARE(requestsTo("PUT", "/routine-items/500").size(), 1);
+        const QJsonObject sent = lastBodyTo("PUT", "/routine-items/500");
+        QCOMPARE(sent.value("targetUnit").toString(), QStringLiteral("kg"));
+        QCOMPARE(sent.value("targetWeight").toDouble(), 135.0);
+    }
+
+    void withNoRoutineOpenTheEditorSaysSoAndGoesBack()
+    {
+        server->responses[path("/programs")] = twoPrograms();
+        start();
+        QTRY_VERIFY(findVisible("todayPage"));
+        nav->navigateTo("routine-page");
+        QTRY_VERIFY(findVisible("routineMissing"));
+        QVERIFY(!findVisible("addExercise"));
+        click(find("routineMissingBack"));
+        QTRY_COMPARE(nav->currentPage(), QStringLiteral("programs-page"));
+    }
+
+    void anExerciseTheCatalogDoesNotKnowShowsOnlyItsNameAndRemove()
+    {
+        startInTheEditor(programWithItem(R"({"id":500,"exerciseId":99,"sets":3,"repsMin":8,"repsMax":12,"targetWeight":null,"targetUnit":null,"targetSeconds":null,"targetDistance":null,"distanceUnit":null,"restSeconds":null,"note":null})"));
+        QCOMPARE(find("itemName")->property("text").toString(), QStringLiteral("An exercise this device doesn't know"));
+        QVERIFY(findVisible("itemGone"));
+        QVERIFY(findVisible("itemDelete"));
+        QVERIFY(!findVisible("itemSets") && !findVisible("itemNote"));
+    }
+
+    void anItemGoneElsewhereLandsOnProgramsWithTheNotice()
+    {
+        startInTheEditor();
+        server->methodStatuses["PUT " + path("/routine-items/500")] = 404;
+        server->methodResponses["PUT " + path("/routine-items/500")] = R"({"status":"error","message":"not found"})";
+        replaceText("itemSets", "4");
+        QTRY_COMPARE(nav->currentPage(), QStringLiteral("programs-page"));
+        QTRY_VERIFY(findVisible("programsNotice"));
+        QCOMPARE(find("programsNotice")->property("text").toString(),
+                 QStringLiteral("That was changed or removed on another device, so it's been closed here."));
+    }
+
+    void todayNamesAnExerciseItDoesNotKnow()
+    {
+        server->responses[path("/today")] = todayJson(R"([{"id":511,"exerciseId":99,"sets":3,"repsMin":8,"repsMax":12,
+ "targetWeight":null,"targetUnit":null,"targetSeconds":null,"targetDistance":null,"distanceUnit":null,"restSeconds":null,"note":null}])");
+        startOnToday();
+        QTRY_COMPARE(countVisible("todayItem"), 1);
+        QCOMPARE(find("todayItemName")->property("text").toString(), QStringLiteral("An exercise this device doesn't know"));
+        QVERIFY(findVisible("todayItemGone"));
     }
 };
 

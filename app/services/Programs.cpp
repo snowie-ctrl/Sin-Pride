@@ -19,6 +19,21 @@ QVariantMap Programs::currentRoutine() const
     return {};
 }
 
+void Programs::noteGone(const QString &what)
+{
+    m_goneNotice = what;
+    emit goneNoticeChanged();
+    emit gone(what);
+}
+
+void Programs::clearGoneNotice()
+{
+    if (m_goneNotice.isEmpty())
+        return;
+    m_goneNotice.clear();
+    emit goneNoticeChanged();
+}
+
 void Programs::takeProgram(const QJsonObject &data)
 {
     m_current = data.toVariantMap();
@@ -42,7 +57,7 @@ void Programs::write(const QString &what, const QString &method, const QString &
                     m_routineId = 0;
                     emit currentChanged();
                 }
-                emit gone(what);
+                noteGone(what);
                 loadList();
                 loadToday();
                 return;
@@ -108,7 +123,7 @@ void Programs::open(int programId)
                 m_routineId = 0;
                 emit currentChanged();
             }
-            emit gone(QStringLiteral("program"));
+            noteGone(QStringLiteral("program"));
             loadList();
             return;
         }
@@ -263,6 +278,7 @@ void Programs::reset()
     m_today.clear();
     m_starters.clear();
     m_listLoading = m_todayLoading = m_startersLoading = false;
+    m_goneNotice.clear();
     m_listError.clear();
     m_todayError.clear();
     m_startersError.clear();

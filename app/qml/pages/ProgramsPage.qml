@@ -107,7 +107,17 @@ Rectangle {
         Programs.reorderRoutines(Programs.currentId, ids)
     }
 
+    // A loss on another device may have been met in the editor, whose Back brought this page into being after the
+    // signal was gone; the service keeps it until a page has said so.
+    function takeGoneNotice() {
+        if (Programs.goneNotice.length === 0)
+            return
+        root.notice = Words.goneElsewhere
+        Programs.clearGoneNotice()
+    }
+
     Component.onCompleted: {
+        root.takeGoneNotice()
         Programs.loadList()
         root.tryAutoOpen()
     }
@@ -115,6 +125,7 @@ Rectangle {
     Connections {
         target: Programs
         function onProgramsChanged() { root.tryAutoOpen() }
+        function onGoneNoticeChanged() { root.takeGoneNotice() }
         function onSaved(what) {
             root.problem = ""
             root.notice = ""

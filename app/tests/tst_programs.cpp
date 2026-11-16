@@ -194,6 +194,24 @@ private slots:
         QCOMPARE(failed.size(), 0);
     }
 
+    void theGoneNoticeOutlivesTheSignalUntilCleared()
+    {
+        programs->open(5);
+        QTRY_COMPARE(programs->currentId(), 5);
+        QVERIFY(programs->goneNotice().isEmpty());
+        server->methodStatuses["PUT " + p("/programs/5")] = 404;
+        server->methodResponses["PUT " + p("/programs/5")] = R"({"status":"error","message":"not found"})";
+        QSignalSpy changed(programs.get(), &Programs::goneNoticeChanged);
+        programs->rename(5, "Anything");
+        QTRY_COMPARE(programs->goneNotice(), QStringLiteral("program"));
+        QCOMPARE(changed.size(), 1);
+        programs->clearGoneNotice();
+        QVERIFY(programs->goneNotice().isEmpty());
+        QCOMPARE(changed.size(), 2);
+        programs->clearGoneNotice();
+        QCOMPARE(changed.size(), 2);
+    }
+
     void activatingTheOpenProgramKeepsItOpen()
     {
         programs->open(5);

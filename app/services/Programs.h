@@ -29,6 +29,9 @@ class Programs : public QObject
     Q_PROPERTY(QString todayError READ todayError NOTIFY todayChanged)
     // The date Today was asked for (YYYY-MM-DD), for the page's "planned for …" words.
     Q_PROPERTY(QString todayDate READ todayDate NOTIFY todayChanged)
+    // What was lost on another device (the `what` of the last gone()), kept until a page has said so: a page that is
+    // opened by the very navigation gone() causes (the editor going back to Programs) never sees the signal itself.
+    Q_PROPERTY(QString goneNotice READ goneNotice NOTIFY goneNoticeChanged)
     Q_PROPERTY(QVariantList starters READ starters NOTIFY startersChanged)
     Q_PROPERTY(bool startersLoading READ startersLoading NOTIFY startersChanged)
     Q_PROPERTY(QString startersError READ startersError NOTIFY startersChanged)
@@ -47,6 +50,7 @@ public:
     bool todayLoading() const { return m_todayLoading; }
     QString todayError() const { return m_todayError; }
     QString todayDate() const { return dateToday().toString(Qt::ISODate); }
+    QString goneNotice() const { return m_goneNotice; }
     QVariantList starters() const { return m_starters; }
     bool startersLoading() const { return m_startersLoading; }
     QString startersError() const { return m_startersError; }
@@ -77,6 +81,7 @@ public:
     // letters, which the starter files keep); never with text a person typed.
     Q_INVOKABLE void adopt(const QString &key);
     Q_INVOKABLE void reset();
+    Q_INVOKABLE void clearGoneNotice();
 
 signals:
     void programsChanged();
@@ -86,6 +91,7 @@ signals:
     void saved(const QString &what, int id);
     void failed(const QString &what, const QString &code, const QString &field);
     void gone(const QString &what);
+    void goneNoticeChanged();
 
 private:
     enum class Answer { Program, List };
@@ -94,10 +100,12 @@ private:
     void write(const QString &what, const QString &method, const QString &path, const QJsonObject &body, Answer answer,
                int listId = 0);
     void takeProgram(const QJsonObject &data);
+    void noteGone(const QString &what);
     QDate dateToday() const { return m_fixedToday.isValid() ? m_fixedToday : QDate::currentDate(); }
     static QString codeOf(const Api::Result &result);
 
     Api &m_api;
+    QString m_goneNotice;
     QVariantList m_programs;
     bool m_listLoading = false;
     QString m_listError;
