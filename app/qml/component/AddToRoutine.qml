@@ -34,6 +34,7 @@ Popup {
     }
 
     function chooseProgram(id) {
+        root.problem = ""
         root.programId = id
         Programs.open(id)
     }
@@ -64,6 +65,13 @@ Popup {
 
     Connections {
         target: Programs
+        // A program that can't be opened (offline, or gone elsewhere) sends the person back to the list, with why.
+        function onGone(what) {
+            if (what !== "program" || root.programId === 0)
+                return
+            root.programId = 0
+            root.problem = Words.goneElsewhere
+        }
         function onSaved(what) {
             if (what !== "item" || !root.pending)
                 return
@@ -73,6 +81,11 @@ Popup {
             closer.restart()
         }
         function onFailed(what, code, field) {
+            if (what === "program" && root.programId > 0) {
+                root.programId = 0
+                root.problem = Words.saveProblem(code, field)
+                return
+            }
             if (what !== "item" || !root.pending)
                 return
             root.pending = false
@@ -98,16 +111,27 @@ Popup {
         Text {
             objectName: "addToRoutineNoPrograms"
             width: parent.width
-            visible: root.ordered.length === 0 && !Programs.listLoading
+            visible: root.ordered.length === 0 && !Programs.listLoading && Programs.listError.length === 0
             text: Words.noProgramsForAdd
             wrapMode: Text.Wrap
             color: Preferences.textMuted
             font.family: Preferences.appFont
             font.pixelSize: Preferences.fontSizeBody
         }
+        // A list that could not load is not an empty one: say so rather than send the person to make a program.
+        Text {
+            objectName: "addToRoutineListError"
+            width: parent.width
+            visible: root.ordered.length === 0 && !Programs.listLoading && Programs.listError.length > 0
+            text: Programs.listError.length > 0 ? Words.failure(Programs.listError) : ""
+            wrapMode: Text.Wrap
+            color: Preferences.dangerColor
+            font.family: Preferences.appFont
+            font.pixelSize: Preferences.fontSizeBody
+        }
         ActionButton {
             objectName: "addToRoutineOpenPrograms"
-            visible: root.ordered.length === 0 && !Programs.listLoading
+            visible: root.ordered.length === 0 && !Programs.listLoading && Programs.listError.length === 0
             text: Words.openPrograms
             onClicked: { root.close(); Nav.navigateTo("programs-page") }
         }

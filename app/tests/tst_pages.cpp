@@ -287,7 +287,8 @@ class TestPages : public QObject
         nav->setStartPage("catalog-page");
         start();
         QTRY_VERIFY(findVisible("catalogPage"));
-        QTRY_COMPARE(catalog->shownCount(), 3);
+        // Own exercises, when a test has some, add to the three the catalog holds.
+        QTRY_VERIFY(catalog->shownCount() >= 3);
     }
 
     // A new account, intro pending; PUT /profile answers done, as the server would once the intro is finished.
@@ -1546,6 +1547,89 @@ private slots:
         click(find("addRoutineRow"));
         QTRY_COMPARE(lastBodyTo("POST", "/routine-items"), QJsonObject({{"routineId", 50}, {"exerciseId", 7}}));
         QTRY_VERIFY(findVisible("addToRoutineDone"));
+    }
+
+    void aRefusedDeleteSaysWhyAndKeepsTheExercise()
+    {
+        server->responses[path("/exercises")] = "{\"status\":\"ok\",\"data\":[" + sandbag() + "]}";
+        server->methodStatuses["DELETE " + path("/exercises/900")] = 503;
+        server->methodResponses["DELETE " + path("/exercises/900")] = R"({"status":"error","message":"down"})";
+        startSignedIn();
+        QTRY_COMPARE(catalog->own().size(), 1);
+        catalog->open(900);
+        nav->navigateTo("exercise-page");
+        QTRY_VERIFY(findVisible("deleteOwn"));
+        click(find("deleteOwn"));
+        QTRY_VERIFY(findVisible("confirmYes"));
+        click(find("confirmYes"));
+        QTRY_VERIFY(findVisible("exerciseError"));
+        QCOMPARE(find("exerciseError")->property("text").toString(), QStringLiteral("Pride couldn't do that just now. Try again."));
+        QVERIFY(findVisible("exercisePage"));
+        QCOMPARE(catalog->own().size(), 1);
+    }
+
+    void aRefusedAddToARoutineSaysWhy()
+    {
+        server->responses[path("/programs")] = twoPrograms();
+        server->responses[path("/programs/5")] = programJson();
+        server->methodStatuses["POST " + path("/routine-items")] = 503;
+        server->methodResponses["POST " + path("/routine-items")] = R"({"status":"error","message":"down"})";
+        startSignedIn();
+        catalog->open(7);
+        nav->navigateTo("exercise-page");
+        QTRY_VERIFY(findVisible("addToRoutine"));
+        click(find("addToRoutine"));
+        QTRY_COMPARE(countVisible("addProgramRow"), 2);
+        click(find("addProgramRow"));
+        QTRY_COMPARE(countVisible("addRoutineRow"), 2);
+        click(find("addRoutineRow"));
+        QTRY_VERIFY(findVisible("addToRoutineError"));
+        QCOMPARE(find("addToRoutineError")->property("text").toString(), QStringLiteral("Pride couldn't do that just now. Try again."));
+        QVERIFY(!findVisible("addToRoutineDone"));
+    }
+
+    void withNoProgramsAddToARoutinePointsToPrograms()
+    {
+        server->responses[path("/programs")] = R"({"status":"ok","data":[]})";
+        startSignedIn();
+        catalog->open(7);
+        nav->navigateTo("exercise-page");
+        QTRY_VERIFY(findVisible("addToRoutine"));
+        click(find("addToRoutine"));
+        QTRY_VERIFY(findVisible("addToRoutineNoPrograms"));
+        QVERIFY(findVisible("addToRoutineOpenPrograms"));
+        QVERIFY(!findVisible("addToRoutineListError"));
+    }
+
+    void aProgramListThatCannotLoadIsNotAnEmptyOne()
+    {
+        server->statuses[path("/programs")] = 503;
+        server->responses[path("/programs")] = R"({"status":"error","message":"down"})";
+        startSignedIn();
+        catalog->open(7);
+        nav->navigateTo("exercise-page");
+        QTRY_VERIFY(findVisible("addToRoutine"));
+        click(find("addToRoutine"));
+        QTRY_VERIFY(findVisible("addToRoutineListError"));
+        QCOMPARE(find("addToRoutineListError")->property("text").toString(), QStringLiteral("Pride couldn't do that just now. Try again."));
+        QVERIFY(!findVisible("addToRoutineNoPrograms"));
+    }
+
+    void aProgramThatCannotBeOpenedReturnsToTheList()
+    {
+        server->responses[path("/programs")] = twoPrograms();
+        server->statuses[path("/programs/5")] = 503;
+        server->responses[path("/programs/5")] = R"({"status":"error","message":"down"})";
+        startSignedIn();
+        catalog->open(7);
+        nav->navigateTo("exercise-page");
+        QTRY_VERIFY(findVisible("addToRoutine"));
+        click(find("addToRoutine"));
+        QTRY_COMPARE(countVisible("addProgramRow"), 2);
+        click(find("addProgramRow"));
+        QTRY_VERIFY(findVisible("addToRoutineError"));
+        QTRY_COMPARE(countVisible("addProgramRow"), 2);
+        QCOMPARE(countVisible("addRoutineRow"), 0);
     }
 
     void aRemovedExerciseCannotBeAddedToARoutine()

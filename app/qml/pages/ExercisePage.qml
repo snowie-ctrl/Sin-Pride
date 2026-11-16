@@ -23,6 +23,8 @@ Rectangle {
     readonly property bool shown: root.found && root.exercise.removed !== true
     // Set while this page's Delete is waiting on the service, so another page's removal doesn't move this one.
     property bool deleting: false
+    // Why the last Delete was refused; the exercise stays as it was.
+    property string problem: ""
 
     OwnExerciseForm { id: ownForm }
     AddToRoutine { id: addPopup }
@@ -32,6 +34,7 @@ Rectangle {
         yesText: Words.deleteWord
         text: root.found ? Words.deleteOwnQuestion(root.exercise.name) : ""
         onAccepted: {
+            root.problem = ""
             root.deleting = true
             Catalog.removeOwn(root.exercise.id)
         }
@@ -45,7 +48,12 @@ Rectangle {
             root.deleting = false
             Nav.navigateTo("catalog-page")
         }
-        function onOwnFailed() { root.deleting = false }
+        function onOwnFailed(code, field) {
+            if (!root.deleting)
+                return
+            root.deleting = false
+            root.problem = Words.saveProblem(code, field)
+        }
     }
 
     ActionButton {
@@ -160,6 +168,8 @@ Rectangle {
                     onClicked: confirmDelete.open()
                 }
             }
+
+            Problem { objectName: "exerciseError"; text: root.problem }
 
             Text {
                 width: parent.width
