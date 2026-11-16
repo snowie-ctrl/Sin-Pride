@@ -225,3 +225,179 @@ def test_lastTimeKeepsOneLoggingOfTheExercise():
 def test_recentIsNewestFirst():
     rows = lifts(1, D1, (100, 8)) + lifts(2, D2, (105, 8)) + lifts(3, D3, (110, 8))
     assert [r["workoutId"] for r in rules.recent(rows, limit=2)] == [3, 2]
+
+
+# ---- Suggestions (spec §5; plan decisions 14-18) ----
+
+LB = {"units": "lb", "upperIncrement": 5.0, "lowerIncrement": 10.0}
+KG = {"units": "kg", "upperIncrement": 2.5, "lowerIncrement": 5.0}
+
+
+def item(measure="weight_reps", region="upper", sets=3, low=8, high=12, weight=135.0, unit="lb", seconds=None):
+    return {"id": 500, "measure": measure, "region": region, "sets": sets, "repsMin": low, "repsMax": high,
+            "targetWeight": weight, "targetUnit": unit if weight is not None else None, "targetSeconds": seconds}
+
+
+@pytest.mark.parametrize("value,unit,want", [
+    (140, "lb", 140), (137.5, "lb", 140), (137.4, "lb", 135), (62.5, "kg", 62.5), (63.7, "kg", 62.5),
+    (63.8, "kg", 65),
+])
+def test_roundToStep(value, unit, want):
+    assert rules.roundToStep(value, unit) == want
+
+
+def three(weight, reps, unit="lb", warm=None):
+    sets = [row(1, D1, n, weight=weight, reps=r, unit=unit) for n, r in enumerate(reps, start=1)]
+    return sets + ([row(1, D1, 9, weight=warm, reps=5, warmup=True)] if warm else [])
+
+
+@pytest.mark.parametrize("name,it,sets,profile,want", [
+    ("upper, lb", item(), three(135, [12, 12, 12]), LB, {"weight": 140.0, "unit": "lb"}),
+    ("lower uses the lower step", item(region="lower", weight=185), three(185, [12, 12, 12]), LB,
+     {"weight": 195.0, "unit": "lb"}),
+    ("full uses the upper step", item(region="full"), three(135, [12, 12, 12]), LB, {"weight": 140.0, "unit": "lb"}),
+    ("kg", item(weight=60, unit="kg"), three(60, [12, 12, 12], "kg"), KG, {"weight": 62.5, "unit": "kg"}),
+    ("kg increment, lb target", item(), three(135, [12, 12, 12]), KG, {"weight": 140.0, "unit": "lb"}),
+    ("lb increment, kg target", item(weight=60, unit="kg"), three(60, [12, 12, 12], "kg"), LB,
+     {"weight": 62.5, "unit": "kg"}),
+    ("kg sets, lb target", item(), three(62, [12, 12, 12], "kg"), LB, {"weight": 140.0, "unit": "lb"}),
+    ("a small increment still steps up", item(), three(135, [12, 12, 12]), {**LB, "upperIncrement": 0.5},
+     {"weight": 140.0, "unit": "lb"}),
+    ("one set short of the top", item(), three(135, [12, 12, 11]), LB, None),
+    ("a warm-up is not a working set", item(), three(135, [12, 12, 12], warm=95), LB,
+     {"weight": 140.0, "unit": "lb"}),
+    ("fewer working sets than planned", item(), three(135, [12, 12]), LB, None),
+    ("below the target weight", item(), three(130, [12, 12, 12]), LB, None),
+    ("no target: the lightest set is the base", item(weight=None),
+     [row(1, D1, 1, weight=50, reps=12), row(1, D1, 2, weight=55, reps=12), row(1, D1, 3, weight=55, reps=12)],
+     LB, {"weight": 55.0, "unit": "lb"}),
+    ("over 2,000 is not proposed", item(weight=1998), three(1998, [12, 12, 12]), LB, None),
+    ("reps, no weight: the range goes up 2", item("reps", weight=None), [row(1, D1, n, reps=12) for n in (1, 2, 3)],
+     LB, {"repsMin": 10, "repsMax": 14}),
+    ("reps at 100 stay", item("reps", weight=None, low=98, high=100), [row(1, D1, n, reps=100) for n in (1, 2, 3)],
+     LB, None),
+    ("reps with added weight step the weight", item("reps", weight=20),
+     [row(1, D1, n, weight=20, reps=12) for n in (1, 2, 3)], LB, {"weight": 25.0, "unit": "lb"}),
+    ("time: 10 s more", item("time", weight=None, low=None, high=None, seconds=30),
+     [row(1, D1, n, seconds=s) for n, s in ((1, 30), (2, 35), (3, 31))], LB, {"seconds": 40}),
+    ("time short of the target", item("time", weight=None, low=None, high=None, seconds=30),
+     [row(1, D1, n, seconds=s) for n, s in ((1, 30), (2, 25), (3, 31))], LB, None),
+    ("distance and time: none in part 1", item("distance_time", weight=None, low=None, high=None, sets=1),
+     [row(1, D1, distance=5, dunit="km", seconds=1500)], LB, None),
+])
+def test_increase(name, it, sets, profile, want):
+    assert rules.increase(it, sets, profile) == want, name
+
+
+@pytest.mark.parametrize("values,want", [
+    ([100, 105, 104, 105, 103], True),       # the last three never beat 105
+    ([100, 105, 104, 106, 103], False),      # 106 beat it
+    ([100, 100, 100], False),                # three workouts are not enough: nothing came before them
+    ([100, 100, 100, 100], True),
+    ([None, 100, 100, 100], False),          # nothing measurable before the three
+])
+def test_stalled(values, want):
+    assert rules.stalled(values) is want
+
+
+def test_lastImprovement():
+    assert rules.lastImprovement([100, 105, 104, 106, 103]) == 3
+    assert rules.lastImprovement([100, 100, 100]) == 0
+    assert rules.lastImprovement([]) == -1
+
+
+def test_bestValue():
+    assert round(rules.bestValue("weight_reps", [row(1, D1, weight=100, reps=10, unit="kg")]), 2) == 133.33
+    # No set of 12 reps or fewer: the heaviest set stands in.
+    assert round(rules.bestValue("weight_reps", [row(1, D1, weight=100, reps=15, unit="kg")]), 2) == 100.0
+    assert rules.bestValue("reps", [row(1, D1, reps=9), row(1, D1, 2, reps=11)]) == 11
+    assert rules.bestValue("time", [row(1, D1, seconds=40, warmup=True)]) is None
+    assert rules.bestValue("distance_time", [row(1, D1, distance=5, dunit="km")]) is None
+
+
+def session(workout, day, reps, weight=135):
+    return [row(workout, day, n, weight=weight, reps=r) for n, r in enumerate(reps, start=1)]
+
+
+TOP = [12, 12, 12]
+SHORT = [12, 11, 10]
+
+
+def made(kind, basedOn, state="open", id=1, weight=None, unit=None):
+    return {"id": id, "kind": kind, "basedOn": basedOn, "state": state, "weight": weight, "unit": unit,
+            "repsMin": None, "repsMax": None, "seconds": None}
+
+
+def test_aQualifyingWorkoutMakesAStepUp():
+    withdraw, create = rules.suggestionFor(item(), session(1, D1, SHORT) + session(2, D2, TOP), LB, [])
+    assert withdraw == []
+    assert create == {"kind": "increase", "basedOn": 2, "weight": 140.0, "unit": "lb", "repsMin": None,
+                      "repsMax": None, "seconds": None}
+
+
+def test_theSameOpenStepUpIsKept():
+    existing = [made("increase", 2, weight=140.0, unit="lb")]
+    assert rules.suggestionFor(item(), session(2, D2, TOP), LB, existing) == ([], None)
+
+
+def test_aNewerStepUpReplacesTheOpenOne():
+    existing = [made("increase", 1, weight=140.0, unit="lb", id=7)]
+    withdraw, create = rules.suggestionFor(item(weight=140), session(1, D1, TOP) + session(2, D2, TOP, 140), LB,
+                                           existing)
+    assert withdraw == [7] and create["basedOn"] == 2 and create["weight"] == 145.0
+
+
+def test_aDismissedStepUpWaitsForAnotherQualifyingWorkout():
+    existing = [made("increase", 2, state="dismissed", weight=140.0, unit="lb")]
+    assert rules.suggestionFor(item(), session(2, D2, TOP), LB, existing) == ([], None)
+    withdraw, create = rules.suggestionFor(item(), session(2, D2, TOP) + session(3, D3, TOP), LB, existing)
+    assert withdraw == [] and create["basedOn"] == 3
+
+
+def test_anAcceptedStepUpIsNotMadeAgain():
+    # Review focus 1: the target is already 140 and the workout behind it was edited; nothing new for that workout.
+    existing = [made("increase", 2, state="accepted", weight=140.0, unit="lb")]
+    assert rules.suggestionFor(item(), session(2, D2, TOP, 140), LB, existing) == ([], None)
+
+
+def test_aWorkoutThatNoLongerQualifiesWithdrawsTheOpenStepUp():
+    existing = [made("increase", 2, weight=140.0, unit="lb", id=7)]
+    assert rules.suggestionFor(item(), session(2, D2, SHORT), LB, existing) == ([7], None)
+    # A newer workout that falls short: the step-up no longer holds either (plan decision 17).
+    assert rules.suggestionFor(item(), session(2, D2, TOP) + session(3, D3, SHORT), LB, existing) == ([7], None)
+
+
+def test_noHistoryLeftWithdrawsEverythingOpen():
+    existing = [made("increase", None, id=7), made("stall", 1, state="dismissed", id=8)]
+    assert rules.suggestionFor(item(), [], LB, existing) == ([7], None)
+
+
+FLAT = [10, 9, 8]
+
+
+def flat(n):
+    return [r for w in range(1, n + 1) for r in session(w, date(2026, 10, w), FLAT)]
+
+
+def test_threeFlatWorkoutsAfterABestMakeAStall():
+    withdraw, create = rules.suggestionFor(item(), flat(4), LB, [])
+    assert withdraw == [] and create["kind"] == "stall" and create["basedOn"] == 4
+    assert rules.suggestionFor(item(), flat(3), LB, []) == ([], None)
+
+
+def test_aStallIsMadeOnceUntilTheItemImproves():
+    open_ = [made("stall", 4, id=9)]
+    assert rules.suggestionFor(item(), flat(5), LB, open_) == ([], None)          # kept, not made again
+    noted = [made("stall", 4, state="dismissed", id=9)]
+    assert rules.suggestionFor(item(), flat(5), LB, noted) == ([], None)          # noted: nothing new
+    better = flat(5) + session(6, date(2026, 10, 6), [12, 11, 10])
+    later = better + [r for w in (7, 8, 9) for r in session(w, date(2026, 10, w), FLAT)]
+    # Workout 6 improved; 7-9 brought nothing above it: a new stall.
+    withdraw, create = rules.suggestionFor(item(), later, LB, noted)
+    assert create["kind"] == "stall" and create["basedOn"] == 9
+
+
+def test_aStepUpReplacesAnOpenStall():
+    withdraw, create = rules.suggestionFor(item(), flat(4) + session(5, date(2026, 10, 5), TOP), LB,
+                                           [made("stall", 4, id=9)])
+    assert withdraw == [9] and create["kind"] == "increase"

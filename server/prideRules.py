@@ -271,3 +271,135 @@ def recent(rows, limit=5):
         if len(found) == limit:
             break
     return found
+
+
+# ---- Suggestions (spec §5; plan decisions 14-18) ----
+
+STEP = {"lb": 5.0, "kg": 2.5}
+MAX_WEIGHT = 2000
+PROPOSAL_FIELDS = ("weight", "unit", "repsMin", "repsMax", "seconds")
+
+
+def roundToStep(value, unit):
+    """To the nearest loadable step (spec §5: 5 lb or 2.5 kg); a half step goes up."""
+    step = STEP[unit]
+    return math.floor(value / step + 0.5) * step
+
+
+def increase(item, sets, profile):
+    """The step-up the item's latest workout earned (spec §5), as the proposed targets, or None. `sets` are that
+    workout's rows for the item."""
+    working = [s for s in sets if not s["warmup"]]
+    if len(working) < item["sets"]:
+        return None                                   # plan decision 14: a full session
+    measure = item["measure"]
+    if measure == "time":
+        target = item["targetSeconds"]
+        if target and all((s["seconds"] or 0) >= target for s in working):
+            return {"seconds": min(target + 10, 36000)}
+        return None
+    if measure not in ("weight_reps", "reps"):
+        return None                                   # distance and time: none in part 1
+    top = item["repsMax"]
+    if top is None or not all((s["reps"] or 0) >= top for s in working):
+        return None
+    weighted = measure == "weight_reps" or item["targetWeight"] is not None or all(s["weight"] for s in working)
+    if not weighted:
+        low, high = min(item["repsMin"] + 2, 100), min(top + 2, 100)
+        return None if high == top else {"repsMin": low, "repsMax": high}
+    if any(s["weight"] is None for s in working):
+        return None
+    if item["targetWeight"] is not None:
+        base, unit = float(item["targetWeight"]), item["targetUnit"]
+        if not all(toKg(s["weight"], s["weightUnit"]) >= toKg(base, unit) - 1e-6 for s in working):
+            return None
+    else:
+        lightest = min(working, key=lambda s: toKg(s["weight"], s["weightUnit"]))
+        base, unit = float(lightest["weight"]), lightest["weightUnit"]
+    step = profile["upperIncrement"] if item["region"] in ("upper", "full") else profile["lowerIncrement"]
+    if profile["units"] != unit:
+        step = fromKg(toKg(step, profile["units"]), unit)
+    proposed = roundToStep(base + step, unit)
+    if proposed <= base + 1e-9:
+        # Plan decision 15: always at least one step above the base, however small the increment.
+        proposed = (math.floor(base / STEP[unit] + 1e-9) + 1) * STEP[unit]
+    return None if proposed > MAX_WEIGHT else {"weight": float(proposed), "unit": unit}
+
+
+def bestValue(measure, sets):
+    """A workout's best for the stall rule (plan decision 18): the estimated one-rep max (the heaviest set when no
+    set has 12 reps or fewer), reps, or seconds; None for distance and time, or when nothing counts."""
+    working = [s for s in sets if not s["warmup"]]
+    if measure == "weight_reps":
+        estimates = [e for e in (epley(toKg(s["weight"], s["weightUnit"]), s["reps"]) for s in working) if e]
+        heaviest = [toKg(s["weight"], s["weightUnit"]) for s in working if s["weight"]]
+        return max(estimates) if estimates else (max(heaviest) if heaviest else None)
+    if measure in ("reps", "time"):
+        values = [v for v in (s["reps" if measure == "reps" else "seconds"] for s in working) if v]
+        return max(values) if values else None
+    return None
+
+
+def stalled(values):
+    """The last three workouts brought nothing above the best before them (spec §5); needs one before them."""
+    if len(values) < 4:
+        return False
+    prior = [v for v in values[:-3] if v is not None]
+    if not prior:
+        return False
+    recent = [v for v in values[-3:] if v is not None]
+    return not recent or max(recent) <= max(prior) + 1e-9
+
+
+def lastImprovement(values):
+    """The index of the latest workout that beat everything before it (the first measured one counts); -1 for
+    none."""
+    found, best = -1, None
+    for index, value in enumerate(values):
+        if value is not None and (best is None or value > best + 1e-9):
+            found, best = index, value
+    return found
+
+
+def _same(existing, wanted):
+    if existing["kind"] != wanted["kind"] or existing["basedOn"] != wanted["basedOn"]:
+        return False
+    for key in PROPOSAL_FIELDS:
+        a, b = existing.get(key), wanted.get(key)
+        if (a is None) != (b is None):
+            return False
+        if a is not None and a != b and (isinstance(a, str) or abs(float(a) - float(b)) > 1e-6):
+            return False
+    return True
+
+
+def suggestionFor(item, rows, profile, existing):
+    """What the item's suggestions become after its history changed (spec §5's lifecycle, plan decisions 17-18):
+    (the ids of open suggestions to withdraw, the suggestion to add or None). `rows` are the item's logged sets,
+    `existing` its suggestions in every state."""
+    workouts = _byWorkout(rows)
+    wanted = None
+    if workouts:
+        ids = [group[0]["workoutId"] for group in workouts]
+        latestId = ids[-1]
+        step = increase(item, workouts[-1], profile)
+        if step is not None:
+            settled = any(s["kind"] == "increase" and s["basedOn"] == latestId
+                          and s["state"] in ("dismissed", "accepted") for s in existing)
+            if not settled:
+                wanted = {"kind": "increase", "basedOn": latestId, **dict.fromkeys(PROPOSAL_FIELDS), **step}
+        else:
+            values = [bestValue(item["measure"], group) for group in workouts]
+            if stalled(values):
+                since = lastImprovement(values)
+                raised = [s for s in existing if s["kind"] == "stall" and s["state"] != "withdrawn"
+                          and s["basedOn"] in ids and ids.index(s["basedOn"]) > since]
+                kept = next((s for s in raised if s["state"] == "open"), None)
+                if kept is not None:
+                    wanted = {"kind": "stall", "basedOn": kept["basedOn"], **dict.fromkeys(PROPOSAL_FIELDS)}
+                elif not raised:
+                    wanted = {"kind": "stall", "basedOn": latestId, **dict.fromkeys(PROPOSAL_FIELDS)}
+    openOnes = [s for s in existing if s["state"] == "open"]
+    keep = next((s for s in openOnes if wanted is not None and _same(s, wanted)), None)
+    withdraw = [s["id"] for s in openOnes if s is not keep]
+    return withdraw, (None if keep is not None or wanted is None else wanted)
