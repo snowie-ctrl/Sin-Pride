@@ -150,3 +150,19 @@ inline QString failureOf(const Api::Result &result)
 {
     return result.httpStatus == 0 ? QStringLiteral("network") : QStringLiteral("server");
 }
+
+
+// Why a write was refused, as a code the pages put into words: 404 "not_found", 400 "invalid" (the answer's `field`
+// names what), 409 "unavailable" when the answer says so and "limit" otherwise, anything else as failureOf.
+inline QString refusalOf(const Api::Result &result)
+{
+    if (result.httpStatus == 404)
+        return QStringLiteral("not_found");
+    if (result.httpStatus == 400)
+        return QStringLiteral("invalid");
+    if (result.httpStatus == 409) {
+        const QString status = result.object.value("status").toString();
+        return status == QLatin1String("unavailable") ? status : QStringLiteral("limit");
+    }
+    return failureOf(result);
+}

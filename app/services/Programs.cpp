@@ -8,15 +8,7 @@ Programs::Programs(Api &api, QObject *parent) : QObject(parent), m_api(api) {}
 
 QString Programs::codeOf(const Api::Result &result)
 {
-    if (result.httpStatus == 404)
-        return QStringLiteral("not_found");
-    if (result.httpStatus == 400)
-        return QStringLiteral("invalid");
-    if (result.httpStatus == 409) {
-        const QString status = result.object.value("status").toString();
-        return status == QLatin1String("unavailable") ? status : QStringLiteral("limit");
-    }
-    return failureOf(result);
+    return refusalOf(result);
 }
 
 QVariantMap Programs::currentRoutine() const

@@ -223,7 +223,7 @@ private slots:
         accounts = std::make_unique<AccountStore>(dataDir);
         session = std::make_unique<Session>(*api);
         exercises = std::make_unique<ExerciseStore>(*api, dataDir);
-        catalog = std::make_unique<Catalog>(*exercises);
+        catalog = std::make_unique<Catalog>(*exercises, *api);
         wireServices(*session, *accounts, *exercises, *catalog);
     }
 

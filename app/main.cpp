@@ -48,7 +48,7 @@ int main(int argc, char *argv[])
     AccountStore accounts(dataDir);
     Session session(api);
     ExerciseStore exercises(api, dataDir);
-    Catalog catalog(exercises);
+    Catalog catalog(exercises, api);
     // Pictures load through managers this makes, so they carry the session token.
     AuthNetworkFactory networkFactory;
 

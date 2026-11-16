@@ -40,6 +40,15 @@ Item {
         }
     }
 
+    // The person's own exercises are searched too, so a change to them is followed the same way.
+    Connections {
+        target: Catalog
+        function onOwnChanged() {
+            if (field.text.length > 0)
+                search.recompute()
+        }
+    }
+
     Shortcut {
         sequence: "Ctrl+K"
         context: Qt.ApplicationShortcut
