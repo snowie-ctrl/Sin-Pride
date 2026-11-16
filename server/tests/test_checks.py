@@ -162,3 +162,121 @@ def test_anOwnExerciseIsCleanedAndGivenItsRegion():
 ])
 def test_aBadOwnExerciseIsRefused(changes, field):
     assert refused(checks.ownExercise, own(**changes)) == field
+
+
+# ---- Workouts (plan decisions 1-3) ----
+
+MEASURES = {12: "weight_reps", 13: "reps", 14: "time", 15: "distance_time"}
+LATEST = date(2026, 11, 18)
+CID = "0f8fad5b-d9cb-469f-a165-70867728950e"
+
+
+def lifted(weight=135, reps=12, **more):
+    return {"weight": weight, "weightUnit": "lb", "reps": reps, **more}
+
+
+def workoutBody(**changes):
+    data = {"clientId": CID, "performedOn": "2026-11-17", "routineId": 50, "note": None,
+            "exercises": [{"exerciseId": 12, "itemId": 500,
+                           "sets": [lifted(95, 10, warmup=True), lifted(), lifted()]}]}
+    data.update(changes)
+    return data
+
+
+def test_aWorkoutIsCleaned():
+    clean = checks.workout(workoutBody(), LATEST, MEASURES.get)
+    assert clean["clientId"] == CID and clean["performedOn"] == date(2026, 11, 17) and clean["routineId"] == 50
+    first = clean["exercises"][0]
+    assert first["exerciseId"] == 12 and first["itemId"] == 500 and first["note"] is None
+    assert first["sets"][0] == {"warmup": True, "weight": 95.0, "weightUnit": "lb", "reps": 10, "seconds": None,
+                                "distance": None, "distanceUnit": None}
+    assert first["sets"][1]["warmup"] is False
+
+
+def test_aClientIdIsKeptInLowerCase():
+    assert checks.workout(workoutBody(clientId=CID.upper()), LATEST, MEASURES.get)["clientId"] == CID
+
+
+def test_tomorrowIsTheLatestDay():
+    assert checks.workout(workoutBody(performedOn="2026-11-18"), LATEST, MEASURES.get)["performedOn"] == LATEST
+
+
+def test_aFreeWorkoutHasNoRoutineAndUnplannedExercisesNoItem():
+    clean = checks.workout(workoutBody(routineId=None, exercises=[{"exerciseId": 13, "sets": [{"reps": 20}]}]),
+                           LATEST, MEASURES.get)
+    assert clean["routineId"] is None and clean["exercises"][0]["itemId"] is None
+
+
+def test_anEditNeedsNoClientId():
+    clean = checks.workout(workoutBody(clientId=None), LATEST, MEASURES.get, needClientId=False)
+    assert clean["clientId"] is None
+
+
+ONE = [lifted(1, 1)]
+
+
+@pytest.mark.parametrize("changes,field", [
+    ({"clientId": "not-a-uuid"}, "clientId"),
+    ({"clientId": None}, "clientId"),
+    ({"performedOn": "2026-11-19"}, "performedOn"),          # after tomorrow
+    ({"performedOn": "17/11/2026"}, "performedOn"),
+    ({"routineId": "50"}, "routineId"),
+    ({"note": "x" * 1001}, "note"),
+    ({"exercises": []}, "exercises"),
+    ({"exercises": "squats"}, "exercises"),
+    ({"exercises": [{"exerciseId": 12, "sets": ONE}] * 31}, "exercises"),
+    ({"exercises": ["squats"]}, "exercises"),
+    ({"exercises": [{"exerciseId": "12", "sets": ONE}]}, "exerciseId"),
+    ({"exercises": [{"exerciseId": 99, "sets": ONE}]}, "exerciseId"),   # not one the person may log
+    ({"exercises": [{"exerciseId": 12, "itemId": 0, "sets": ONE}]}, "itemId"),
+    ({"exercises": [{"exerciseId": 12, "itemId": 500, "sets": ONE},
+                    {"exerciseId": 12, "itemId": 500, "sets": ONE}]}, "itemId"),
+    ({"exercises": [{"exerciseId": 12, "sets": []}]}, "sets"),
+    ({"exercises": [{"exerciseId": 12, "sets": ONE * 21}]}, "sets"),
+    ({"exercises": [{"exerciseId": 12, "sets": ONE, "note": 5}]}, "note"),
+])
+def test_aWorkoutIsRefusedNamingTheField(changes, field):
+    with pytest.raises(checks.Refusal) as refused:
+        checks.workout(workoutBody(**changes), LATEST, MEASURES.get)
+    assert refused.value.field == field
+
+
+@pytest.mark.parametrize("measure,given,field", [
+    ("weight_reps", {"reps": 8}, "weight"),
+    ("weight_reps", {"weight": 100, "reps": 8}, "weightUnit"),
+    ("weight_reps", {"weightUnit": "lb", "reps": 8}, "weight"),
+    ("weight_reps", {"weight": 2001, "weightUnit": "lb", "reps": 8}, "weight"),
+    ("weight_reps", {"weight": -1, "weightUnit": "lb", "reps": 8}, "weight"),
+    ("weight_reps", {"weight": 100, "weightUnit": "st", "reps": 8}, "weightUnit"),
+    ("weight_reps", {"weight": 100, "weightUnit": "lb", "reps": 0}, "reps"),
+    ("weight_reps", {"weight": 100, "weightUnit": "lb"}, "reps"),
+    ("weight_reps", {"weight": 100, "weightUnit": "lb", "reps": 8, "seconds": 30}, "seconds"),
+    ("weight_reps", {"warmup": "yes", "weight": 1, "weightUnit": "lb", "reps": 1}, "warmup"),
+    ("reps", {"reps": 1001}, "reps"),
+    ("reps", {"reps": 5, "weight": 20}, "weightUnit"),
+    ("time", {}, "seconds"),
+    ("time", {"seconds": 0}, "seconds"),
+    ("time", {"seconds": 36001}, "seconds"),
+    ("time", {"seconds": 30, "reps": 5}, "reps"),
+    ("distance_time", {}, "distance"),
+    ("distance_time", {"distance": 5}, "distanceUnit"),
+    ("distance_time", {"distanceUnit": "km"}, "distance"),
+    ("distance_time", {"distance": 0, "distanceUnit": "km"}, "distance"),
+    ("distance_time", {"distance": 5, "distanceUnit": "yd"}, "distanceUnit"),
+    ("distance_time", {"distance": 5, "distanceUnit": "km", "seconds": 0}, "seconds"),
+])
+def test_aSetTakesOnlyItsMeasuresFields(measure, given, field):
+    with pytest.raises(checks.Refusal) as refused:
+        checks.workoutSet(measure, given)
+    assert refused.value.field == field
+
+
+def test_eachMeasuresGoodSets():
+    assert checks.workoutSet("reps", {"reps": 12})["weight"] is None
+    assert checks.workoutSet("reps", {"reps": 12, "weight": 20, "weightUnit": "kg"})["weight"] == 20.0
+    assert checks.workoutSet("time", {"seconds": 45})["seconds"] == 45
+    assert checks.workoutSet("distance_time", {"seconds": 1500})["distance"] is None
+    ran = checks.workoutSet("distance_time", {"distance": 5, "distanceUnit": "km"})
+    assert ran["distance"] == 5.0 and ran["seconds"] is None
+    # Nulls for fields the measure does not use are fine: the app sends every field.
+    assert checks.workoutSet("time", {"seconds": 45, "weight": None, "reps": None})["reps"] is None

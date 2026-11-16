@@ -15,7 +15,7 @@ except ImportError:  # the stub loads server/ as plain modules
 
 LIMITS = {"programs": 20, "routines": 14, "items": 30, "own": 200, "title": 60, "note": 1000, "name": 120,
           "steps": 50, "step": 1000, "sets": 20, "reps": 100, "weight": 2000, "seconds": 36000, "distance": 1000,
-          "rest": 3600, "increment": 100}
+          "rest": 3600, "increment": 100, "setReps": 1000, "workoutExercises": 30}
 UNITS = ("lb", "kg")
 DISTANCE_UNITS = ("km", "mi", "m")
 GOALS = ("strength", "muscle", "general")
@@ -233,3 +233,111 @@ def ownExercise(body):
     return {"name": name.strip(), "measure": body["measure"], "primary": primary, "secondary": secondary,
             "equipment": [w for w in catalog.EQUIPMENT if w in equipment], "steps": [s.strip() for s in steps],
             "region": catalog.regionOf(primary)}
+
+
+# ---- Workouts (spec §3, §4; plan decisions 1-3) ----
+
+CLIENT_ID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+SET_FIELDS = ("warmup", "weight", "weightUnit", "reps", "seconds", "distance", "distanceUnit")
+# Which set fields each measure logs (spec §4: each measure only accepts its own fields).
+SET_MEASURE_FIELDS = {
+    "weight_reps": {"weight", "weightUnit", "reps"},
+    "reps": {"weight", "weightUnit", "reps"},
+    "time": {"seconds"},
+    "distance_time": {"distance", "distanceUnit", "seconds"},
+}
+
+
+def workoutSet(measure, value):
+    """One logged set, checked for its exercise's measure; the fields it does not log come back None. app/qml/logic/
+    forms.mjs setProblem checks the same things in the same order, so both name the same field first."""
+    if not isinstance(value, dict):
+        raise Refusal("sets", "each set is an object")
+    own = SET_MEASURE_FIELDS[measure]
+    for key in SET_FIELDS[1:]:
+        if key not in own and value.get(key) is not None:
+            raise Refusal(key, f"{key} is not logged for this exercise")
+    warmup = value.get("warmup", False)
+    if not isinstance(warmup, bool):
+        raise Refusal("warmup", "warmup is true or false")
+    clean = dict.fromkeys(SET_FIELDS)
+    clean["warmup"] = warmup
+    if "weight" in own:
+        weight, unit = value.get("weight"), value.get("weightUnit")
+        if weight is None and measure == "weight_reps" and unit is None:
+            raise Refusal("weight", "a set needs its weight")
+        if weight is not None and (not _isNumber(weight) or not 0 <= weight <= LIMITS["weight"]):
+            raise Refusal("weight", f"weight must be from 0 to {LIMITS['weight']}")
+        if unit is not None and unit not in UNITS:
+            raise Refusal("weightUnit", "weightUnit must be lb or kg")
+        if weight is not None and unit is None:
+            raise Refusal("weightUnit", "a weight needs its unit")
+        if unit is not None and weight is None:
+            raise Refusal("weight", "a unit needs a weight")
+        clean["weight"] = None if weight is None else round(float(weight), 2)
+        clean["weightUnit"] = unit
+    if "reps" in own:
+        clean["reps"] = _intIn(value.get("reps"), "reps", 1, LIMITS["setReps"])
+    if measure == "time":
+        clean["seconds"] = _intIn(value.get("seconds"), "seconds", 1, LIMITS["seconds"])
+    if measure == "distance_time":
+        distance, unit, seconds = value.get("distance"), value.get("distanceUnit"), value.get("seconds")
+        if distance is None and unit is None and seconds is None:
+            raise Refusal("distance", "a set needs a distance, a time, or both")
+        if distance is not None and (not _isNumber(distance) or not 0 < distance <= LIMITS["distance"]):
+            raise Refusal("distance", f"distance must be above 0 and up to {LIMITS['distance']}")
+        if unit is not None and unit not in DISTANCE_UNITS:
+            raise Refusal("distanceUnit", "distanceUnit must be km, mi or m")
+        if distance is not None and unit is None:
+            raise Refusal("distanceUnit", "a distance needs its unit")
+        if unit is not None and distance is None:
+            raise Refusal("distance", "a unit needs a distance")
+        clean["distance"] = None if distance is None else round(float(distance), 2)
+        clean["distanceUnit"] = unit
+        if seconds is not None:
+            clean["seconds"] = _intIn(seconds, "seconds", 1, LIMITS["seconds"])
+    return clean
+
+
+def workout(body, latest, measureOf, needClientId=True):
+    """A whole workout as the app sends it. `latest` is the last PerformedOn allowed (tomorrow by the server's date,
+    spec §4); `measureOf(exerciseId)` is the measure of an exercise the person may log, or None. A PUT replaces a
+    workout whose clientId is already stored, so it needs none (needClientId=False)."""
+    if not isinstance(body, dict):
+        raise Refusal("workout", "send the workout as an object")
+    clientId = body.get("clientId")
+    if needClientId or clientId is not None:
+        if not isinstance(clientId, str) or not CLIENT_ID.fullmatch(clientId):
+            raise Refusal("clientId", "clientId must be a UUID")
+        clientId = clientId.lower()
+    performedOn = isoDate(body.get("performedOn"), "performedOn")
+    if performedOn > latest:
+        raise Refusal("performedOn", "performedOn can't be after tomorrow")
+    routineId = body.get("routineId")
+    if routineId is not None:
+        routineId = idOf(routineId, "routineId")
+    clean = {"clientId": clientId, "performedOn": performedOn, "routineId": routineId, "note": note(body.get("note")),
+             "exercises": []}
+    exercises = body.get("exercises")
+    if not isinstance(exercises, list) or not 1 <= len(exercises) <= LIMITS["workoutExercises"]:
+        raise Refusal("exercises", f"a workout has 1 to {LIMITS['workoutExercises']} exercises")
+    items = set()
+    for given in exercises:
+        if not isinstance(given, dict):
+            raise Refusal("exercises", "each exercise is an object")
+        exerciseId = idOf(given.get("exerciseId"), "exerciseId")
+        measure = measureOf(exerciseId)
+        if measure is None:
+            raise Refusal("exerciseId", "no such exercise in the catalog or yours")
+        itemId = given.get("itemId")
+        if itemId is not None:
+            itemId = idOf(itemId, "itemId")
+            if itemId in items:
+                raise Refusal("itemId", "a routine item is logged once a workout")
+            items.add(itemId)
+        sets = given.get("sets")
+        if not isinstance(sets, list) or not 1 <= len(sets) <= LIMITS["sets"]:
+            raise Refusal("sets", f"an exercise has 1 to {LIMITS['sets']} sets")
+        clean["exercises"].append({"exerciseId": exerciseId, "itemId": itemId, "note": note(given.get("note")),
+                                   "sets": [workoutSet(measure, s) for s in sets]})
+    return clean

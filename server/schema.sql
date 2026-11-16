@@ -243,6 +243,7 @@ CREATE TABLE WorkoutExercises (
   ItemID INT NULL,
   Note VARCHAR(1000) NULL,
   PRIMARY KEY (WorkoutExerciseID),
+  UNIQUE KEY ux_workoutexercises_item (WorkoutID, ItemID),
   KEY ix_workoutexercises_workout (WorkoutID, OrderIndex),
   KEY ix_workoutexercises_exercise (ExerciseID),
   CONSTRAINT fk_workoutexercises_workout FOREIGN KEY (WorkoutID) REFERENCES Workouts (WorkoutID) ON DELETE CASCADE,
@@ -271,7 +272,7 @@ CREATE TABLE WorkoutSets (
   CONSTRAINT fk_workoutsets_exercise FOREIGN KEY (WorkoutExerciseID) REFERENCES WorkoutExercises (WorkoutExerciseID) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
--- ---- Suggestions (milestone 3): at most one open per item, which the rules enforce ----
+-- ---- Suggestions (milestone 3): at most one open per item, which prideRules.suggestionFor keeps ----
 
 CREATE TABLE Suggestions (
   SuggestionID INT NOT NULL AUTO_INCREMENT,
@@ -290,6 +291,11 @@ CREATE TABLE Suggestions (
   KEY ix_suggestions_item_state (ItemID, State),
   CONSTRAINT ck_suggestions_kind CHECK (Kind IN ('increase', 'stall')),
   CONSTRAINT ck_suggestions_unit CHECK (ProposedUnit IS NULL OR ProposedUnit IN ('lb', 'kg')),
+  CONSTRAINT ck_suggestions_weight CHECK (ProposedWeight IS NULL OR ProposedWeight BETWEEN 0 AND 2000),
+  CONSTRAINT ck_suggestions_repsmin CHECK (ProposedRepsMin IS NULL OR ProposedRepsMin BETWEEN 1 AND 100),
+  CONSTRAINT ck_suggestions_repsmax CHECK (ProposedRepsMax IS NULL OR ProposedRepsMax BETWEEN 1 AND 100),
+  CONSTRAINT ck_suggestions_range CHECK (ProposedRepsMin IS NULL OR ProposedRepsMax IS NULL OR ProposedRepsMin <= ProposedRepsMax),
+  CONSTRAINT ck_suggestions_seconds CHECK (ProposedSeconds IS NULL OR ProposedSeconds BETWEEN 1 AND 36000),
   CONSTRAINT ck_suggestions_state CHECK (State IN ('open', 'accepted', 'dismissed', 'withdrawn')),
   CONSTRAINT fk_suggestions_user FOREIGN KEY (UserID) REFERENCES Users (UserID) ON DELETE CASCADE,
   CONSTRAINT fk_suggestions_item FOREIGN KEY (ItemID) REFERENCES RoutineItems (ItemID) ON DELETE CASCADE,

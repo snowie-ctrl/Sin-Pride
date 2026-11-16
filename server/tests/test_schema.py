@@ -144,3 +144,20 @@ def test_nothingCascadesFromAnExerciseIntoRoutines():
     """Deleting an own exercise takes it out of routines in the route, on purpose; a cascade would do it silently."""
     planned = [line for line in block("RoutineItems").splitlines() if "REFERENCES Exercises" in line]
     assert planned and "ON DELETE" not in planned[0]
+
+
+def test_suggestionsKeepTheirProposalsInRange():
+    # Carried from milestone 1: the proposed rep range had no CHECK. The schema is loaded once (milestone 4), so it
+    # is settled now.
+    text = block("Suggestions")
+    for check in ("ProposedWeight IS NULL OR ProposedWeight BETWEEN 0 AND 2000",
+                  "ProposedRepsMin IS NULL OR ProposedRepsMin BETWEEN 1 AND 100",
+                  "ProposedRepsMax IS NULL OR ProposedRepsMax BETWEEN 1 AND 100",
+                  "ProposedRepsMin IS NULL OR ProposedRepsMax IS NULL OR ProposedRepsMin <= ProposedRepsMax",
+                  "ProposedSeconds IS NULL OR ProposedSeconds BETWEEN 1 AND 36000"):
+        assert check in text, check
+
+
+def test_aRoutineItemIsLoggedOncePerWorkout():
+    # Plan decision 2. A unique key allows any number of NULLs, so free exercises are not limited by it.
+    assert "UNIQUE KEY ux_workoutexercises_item (WorkoutID, ItemID)" in block("WorkoutExercises")
