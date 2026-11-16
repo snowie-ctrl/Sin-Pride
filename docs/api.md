@@ -3,7 +3,7 @@
 The contract between Pride's apps (the desktop app in `app/`, and the iOS app of part 2) and the routes on plutus:
 `server/prideRoutes.py` and `server/prideUserRoutes.py` at `/api/pride` and, for the catalog importer only, `server/prideAdminRoutes.py` at
 `/api/pride-admin`. The desktop app's stub (`app/tests/stub/stub_server.py`) imitates `/api/pride`. Milestones 1
-and 2's routes are below; each later milestone adds its own.
+to 3's routes are below; each later milestone adds its own.
 
 ## Conventions
 
@@ -17,7 +17,7 @@ and 2's routes are below; each later milestone adds its own.
 - A 5xx through the tunnel is `{"status":"error","message":"server error"}`; at home it names the cause.
 - Dates are ISO 8601; moments are UTC with a `Z`.
 - A refusal of what was sent is `400 {status:"error", field, message}`, naming the body field. An id that is not the
-  caller's is `404 "not found"`. Past a limit: `409 {status:"limit", field, message}`.
+  caller's is `404 "not found"`. Past a limit: `409 {status:"limit", field, message}`; a suggestion no longer open: `409 {status:"closed", message}`.
 
 ## Account
 
@@ -172,6 +172,45 @@ Each starter is filled for the caller: the variant their equipment allows (gym, 
 | `GET /today?date=YYYY-MM-DD` | | `data: {program, nextUp, plannedDay, week}`; `400` naming `date` when it is missing or not a date |
 
 `date` is the app's local date. `nextUp` is the routine after the latest workout's in the active program (by rotation, wrapping round), or the first. `plannedDay` is the first planned weekday from `date`, `date` itself unless a workout is already logged that day. `week` is the 7 days from the profile's week start holding `date`: `done` when any workout is logged that day; `planned` only on `date` and later and never on a done day. The answer: `program` is `{id, title}` or `null` (no active program); `nextUp` is `{routineId, title, items: [item]}` or `null`; `plannedDay` is a date or `null`; `week` is `[{date, weekday, planned, done}]`. Milestone 3 adds last time's sets, open suggestions and the latest crowns.
+
+## Workouts
+
+A person's finished workouts, at `/api/pride/workouts`; every route needs a session and sees only that person's
+(`prideLogRoutes.py`).
+
+| Route | Body | Answer |
+|---|---|---|
+| `GET /routines` | | `data: [{id, title, programId, programTitle, active}]`: every routine of the person, the active program's first, each program's in rotation order (the Log page's menu) |
+| `GET /workouts/draft?routineId=<id>` | | `data: {routineId, title, programId, items: [draft item]}`; `400` naming `routineId` without one; `404` for a routine that is not the person's |
+| `GET /workouts` | | `data: [workout row]`, newest first (by date, then by when it was saved) |
+| `GET /workouts/<id>` | | `data: workout` |
+| `POST /workouts` | a workout | `data: {workout, crowns: [crown], suggestions: [suggestion], nextUp: {routineId, title} \| null}`. A `clientId` already stored for this person answers that workout the same way, storing nothing; one another person used is `400` naming `clientId`. |
+| `PUT /workouts/<id>` | a workout (`clientId` may be left out) | as POST. The date, note, exercises and sets are replaced; the routine stays as logged. |
+| `DELETE /workouts/<id>` | | `data: {deleted: id, nextUp}` |
+
+A workout as sent: `{clientId, performedOn, routineId, note, exercises: [{exerciseId, itemId, note, sets: [set]}]}`.
+`clientId` is a UUID the app makes, so a resend is stored once. `performedOn` is the person's own date, at most
+tomorrow by the server's. `routineId` is `null` for a free workout; the program is taken from the routine. `itemId`
+is the routine item an exercise was planned as, or `null`. A routine or item that is not the person's (say, deleted
+on another device meanwhile) is not refused: the link is dropped and the workout or exercise saved as free.
+
+A set: `{warmup, weight, weightUnit, reps, seconds, distance, distanceUnit}`, by the exercise's measure: weight ×
+reps needs `weight` (0 to 2,000) with `weightUnit` (`lb`/`kg`) and `reps` (1 to 1,000); reps needs `reps` and may
+carry a weight; time needs `seconds` (1 to 36,000); distance and time needs `distance` (above 0, up to 1,000, with
+`distanceUnit` `km`/`mi`/`m`), `seconds`, or both. Fields the measure does not log must be `null` or absent. 1 to 20
+sets an exercise, 1 to 30 exercises a workout, a routine item at most once. Each set keeps the number and unit as
+entered. A refused field is `400` naming it.
+
+A workout as answered: `{id, clientId, performedOn, startedAt, endedAt, programId, routineId, title, note,
+createdAt, updatedAt, exercises: [{exerciseId, itemId, measure, note, sets: [set]}]}`; `title` is the routine's,
+`null` for a free workout or a routine since deleted. A workout row: `{id, performedOn, routineId, title, note,
+exerciseCount, setCount, updatedAt}`. A draft item: a routine item (see Programs) with `measure`, `last` (`{workoutId,
+performedOn, sets: [set]}`: the latest workout that logged this item, or else this exercise; `null` when none) and
+`suggestion` (its open suggestion or `null`).
+
+Saving, editing or deleting a workout settles the suggestions of every routine item it logged (see Suggestions). The
+result card's `crowns` are the records this workout beat (see Progress); an exercise's first workout earns none.
+`suggestions` are the open ones based on this workout.
 
 ## Admin (`/api/pride-admin`, LAN only)
 

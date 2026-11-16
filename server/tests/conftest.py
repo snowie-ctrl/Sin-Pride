@@ -177,9 +177,14 @@ def userRoutes():
 
 
 @pytest.fixture
-def anonUserClient(routes, userRoutes):
-    """Both /api/pride blueprints, as Caduceus will register them (milestone 4)."""
-    return appClient(routes.prideBP, userRoutes.prideUserBP)
+def logRoutes():
+    return loadModule("prideLogRoutes")
+
+
+@pytest.fixture
+def anonUserClient(routes, userRoutes, logRoutes):
+    """The three /api/pride blueprints, as Caduceus will register them (milestone 4)."""
+    return appClient(routes.prideBP, userRoutes.prideUserBP, logRoutes.prideLogBP)
 
 
 @pytest.fixture
