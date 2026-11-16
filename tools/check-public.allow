@@ -15,3 +15,6 @@ free-exercise-db/c0ffee/exercises/Plank/0
 
 # google/fonts commit the heading face came from (app/assets/fonts/*/SOURCE.txt)
 24ddc1f324cac5d9f5aedca126d298f56e3f1640
+# Test names in server/tests/test_exercises.py and test_starters.py that only look like tokens
+test_someoneElsesOrAHiddenOneIs404
+test_the21stProgramCannotBeAStarter
