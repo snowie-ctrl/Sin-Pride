@@ -4,6 +4,7 @@
 #include <QDir>
 #include <QFile>
 #include <QImage>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QQmlApplicationEngine>
@@ -25,6 +26,8 @@
 #include "services/Catalog.h"
 #include "services/ExerciseStore.h"
 #include "services/Nav.h"
+#include "services/Profile.h"
+#include "services/Programs.h"
 #include "services/Session.h"
 #include "services/Wiring.h"
 
@@ -61,6 +64,13 @@ static QByteArray catalogJson()
   "steps":["Hang.","Pull."],"pictures":[]}]}})";
 }
 
+static QByteArray profileJson(const char *intro, const char *equipment = R"(["barbell","bodyweight"])")
+{
+    return QByteArray(R"({"status":"ok","data":{"units":"lb","goal":"general","daysPerWeek":3,"upperIncrement":5.0,)"
+                      R"("lowerIncrement":10.0,"weekStart":"mon","introState":")") + intro + R"(","equipment":)"
+           + equipment + "}}";
+}
+
 static QByteArray pictureBytes()
 {
     QImage image(32, 24, QImage::Format_RGB32);
@@ -88,6 +98,8 @@ class TestPages : public QObject
     std::unique_ptr<Session> session;
     std::unique_ptr<ExerciseStore> exercises;
     std::unique_ptr<Catalog> catalog;
+    std::unique_ptr<Profile> profile;
+    std::unique_ptr<Programs> programs;
     // Declared last, so it is destroyed first: pages go before the services they call.
     std::unique_ptr<QQmlApplicationEngine> engine;
 
@@ -132,12 +144,33 @@ class TestPages : public QObject
         return found;
     }
 
+    // A long page (Settings) holds controls below the window's edge; a click there would miss. Scrolls every Flickable
+    // above the item just far enough to show it.
+    static void scrollIntoView(QQuickItem *item)
+    {
+        for (QQuickItem *flick = item->parentItem(); flick; flick = flick->parentItem()) {
+            const auto content = qvariant_cast<QQuickItem *>(flick->property("contentItem"));
+            if (!content || !flick->property("contentY").isValid() || !flick->property("contentHeight").isValid())
+                continue;
+            const qreal top = item->mapToItem(content, QPointF(0, 0)).y();
+            const qreal viewTop = flick->property("contentY").toReal();
+            if (top >= viewTop && top + item->height() <= viewTop + flick->height())
+                continue;
+            const qreal farthest = qMax<qreal>(0, flick->property("contentHeight").toReal() - flick->height());
+            flick->setProperty("contentY", qBound<qreal>(0, top - 20, farthest));
+        }
+    }
+
     void click(QQuickItem *item)
     {
         QVERIFY(item);
         // A page lays itself out in the frame after it appears; without this wait a click now and then landed beside
-        // its target on a busy machine (Gluttony's lesson).
+        // its target on a busy machine (Gluttony's lesson). The item is scrolled into view only after that layout,
+        // and given a frame more to settle there.
         QSignalSpy framed(window(), &QQuickWindow::frameSwapped);
+        window()->update();
+        framed.wait(250);
+        scrollIntoView(item);
         window()->update();
         framed.wait(250);
         const QPointF centre = item->mapToScene(QPointF(item->width() / 2, item->height() / 2));
@@ -172,6 +205,25 @@ class TestPages : public QObject
         return {};
     }
 
+    // By method too, for routes that answer a GET and a PUT.
+    QList<QUrl> requestsTo(const char *method, const QString &route) const
+    {
+        QList<QUrl> found;
+        for (int i = 0; i < server->requests.size(); ++i)
+            if (server->methods[i] == method && server->requests[i].path() == path(route.toUtf8().constData()))
+                found << server->requests[i];
+        return found;
+    }
+
+    QJsonObject lastBodyTo(const char *method, const QString &route) const
+    {
+        for (int i = server->requests.size() - 1; i >= 0; --i)
+            if (server->methods[i] == method && server->requests[i].path() == path(route.toUtf8().constData())
+                && !server->bodies[i].isEmpty())
+                return QJsonDocument::fromJson(server->bodies[i]).object();
+        return {};
+    }
+
     // The app as main.cpp builds it; the device signs itself in at once unless a test answers otherwise.
     void start()
     {
@@ -182,15 +234,26 @@ class TestPages : public QObject
         context->setContextProperty("Session", session.get());
         context->setContextProperty("ExerciseStore", exercises.get());
         context->setContextProperty("Catalog", catalog.get());
+        context->setContextProperty("Profile", profile.get());
+        context->setContextProperty("Programs", programs.get());
         engine->loadFromModule("Pride", "Main");
         QVERIFY(window());
         window()->resize(1600, 1000);
         session->identifyDevice();
     }
 
-    // Signed in and on the Catalog, the catalog arrived.
+    // Signed in and on Today, for the Today page's tests.
+    void startOnToday()
+    {
+        start();
+        QTRY_VERIFY(findVisible("todayPage"));
+    }
+
+    // Signed in and on the Catalog, the catalog arrived. Signing in lands on Today, so these tests ask for the
+    // Catalog as the start page.
     void startSignedIn()
     {
+        nav->setStartPage("catalog-page");
         start();
         QTRY_VERIFY(findVisible("catalogPage"));
         QTRY_COMPARE(catalog->shownCount(), 3);
@@ -214,6 +277,14 @@ private slots:
         server = std::make_unique<FakeServer>();
         server->responses[path("/device/identify")] = signedIn;
         server->responses[path("/catalog")] = catalogJson();
+        server->responses[path("/profile")] = profileJson("done");
+        server->responses[path("/programs")] = R"({"status":"ok","data":[]})";
+        server->responses[path("/today")] = R"({"status":"ok","data":{"program":null,"nextUp":null,"plannedDay":null,"week":[
+ {"date":"2026-11-16","weekday":0,"planned":false,"done":false},{"date":"2026-11-17","weekday":1,"planned":false,"done":false},
+ {"date":"2026-11-18","weekday":2,"planned":false,"done":false},{"date":"2026-11-19","weekday":3,"planned":false,"done":false},
+ {"date":"2026-11-20","weekday":4,"planned":false,"done":false},{"date":"2026-11-21","weekday":5,"planned":false,"done":false},
+ {"date":"2026-11-22","weekday":6,"planned":false,"done":false}]}})";
+        server->responses[path("/exercises")] = R"({"status":"ok","data":[]})";
         // A fresh data folder each test: no account and no catalog copy carry over.
         dataDir = dir.filePath(QStringLiteral("data-%1").arg(++runs));
         preferences = std::make_unique<Preferences>();
@@ -224,12 +295,17 @@ private slots:
         session = std::make_unique<Session>(*api);
         exercises = std::make_unique<ExerciseStore>(*api, dataDir);
         catalog = std::make_unique<Catalog>(*exercises, *api);
-        wireServices(*session, *accounts, *exercises, *catalog);
+        profile = std::make_unique<Profile>(*api);
+        programs = std::make_unique<Programs>(*api);
+        programs->setToday(QDate(2026, 11, 17));
+        wireServices(*session, *accounts, *exercises, *catalog, *profile, *programs);
     }
 
     void cleanup()
     {
         engine.reset();
+        programs.reset();
+        profile.reset();
         catalog.reset();
         exercises.reset();
         session.reset();
@@ -242,13 +318,99 @@ private slots:
 
     // ---- Sign-in and the shell ----
 
-    void aKnownDeviceGoesStraightToTheCatalog()
+    // Until the Today page exists (a later task's) the shell shows nothing for today-page, so this checks where Nav
+    // is and what was asked for.
+    void aKnownDeviceLandsOnTodayAndLoadsWhatIsTheirs()
     {
         start();
-        QTRY_VERIFY(findVisible("catalogPage"));
-        QVERIFY(findVisible("railCatalog"));
-        // Signing in asks for the catalog.
-        QTRY_COMPARE(requestsTo("/catalog").size(), 1);
+        QTRY_VERIFY(findVisible("navShell"));
+        QCOMPARE(nav->currentPage(), QStringLiteral("today-page"));
+        for (const char *route : {"/catalog", "/profile", "/programs", "/today", "/exercises"})
+            QTRY_COMPARE(requestsTo(route).size(), 1);
+    }
+
+    // ---- The shell and Settings ----
+
+    void theRailHasTodayProgramsCatalogAndSettings()
+    {
+        startSignedIn();
+        for (const char *name : {"railToday", "railPrograms", "railCatalog", "railSettings", "railSignOut"})
+            QVERIFY2(findVisible(name), name);
+        click(find("railSettings"));
+        QTRY_VERIFY(findVisible("settingsPage"));
+    }
+
+    void settingsShowsTheProfileAndSavesAPickAtOnce()
+    {
+        startSignedIn();
+        nav->navigateTo("settings-page");
+        QTRY_VERIFY(findVisible("settingsPage"));
+        QTRY_COMPARE(find("units-lb")->property("chosen").toBool(), true);
+        server->methodResponses["PUT " + path("/profile")] = profileJson("done");
+        click(find("units-kg"));
+        QTRY_COMPARE(requestsTo("PUT", "/profile").size(), 1);
+        QCOMPARE(lastBodyTo("PUT", "/profile"), QJsonObject({{"units", "kg"}}));
+    }
+
+    void anIncrementIsCheckedBeforeItIsSaved()
+    {
+        startSignedIn();
+        nav->navigateTo("settings-page");
+        QTRY_VERIFY(findVisible("upperIncrementField"));
+        click(find("upperIncrementField"));
+        QTest::keyClick(window(), Qt::Key_A, Qt::ControlModifier);
+        type("0.3");
+        QTest::keyClick(window(), Qt::Key_Return);
+        QTRY_VERIFY(findVisible("settingsError"));
+        QCOMPARE(find("settingsError")->property("text").toString(), QStringLiteral("An increment is 0.25 to 100, in steps of 0.25"));
+        QVERIFY(requestsTo("PUT", "/profile").isEmpty());
+    }
+
+    void anEquipmentChipSendsTheWholeList()
+    {
+        startSignedIn();
+        nav->navigateTo("settings-page");
+        QTRY_VERIFY(findVisible("equipment-dumbbell"));
+        click(find("equipment-dumbbell"));
+        QTRY_COMPARE(requestsTo("PUT", "/profile").size(), 1);
+        QCOMPARE(lastBodyTo("PUT", "/profile").value("equipment").toArray(),
+                 QJsonArray({"barbell", "dumbbell", "bodyweight"}));
+    }
+
+    void aRefusedSettingSaysWhyAndKeepsTheRest()
+    {
+        startSignedIn();
+        nav->navigateTo("settings-page");
+        QTRY_VERIFY(findVisible("goal-muscle"));
+        server->methodStatuses["PUT " + path("/profile")] = 503;
+        server->methodResponses["PUT " + path("/profile")] = R"({"status":"error","message":"down"})";
+        click(find("goal-muscle"));
+        QTRY_VERIFY(findVisible("settingsError"));
+        QCOMPARE(find("goal-general")->property("chosen").toBool(), true);   // the profile is unchanged
+    }
+
+    void devicesAreListedAndAnotherCanBeSignedOut()
+    {
+        server->responses[path("/devices")] = R"({"status":"ok","data":[
+ {"id":"f00dfeedf00dfeed","label":"f00dfeed","current":true,"lastSignIn":"2026-11-05T08:00:00Z"},
+ {"id":"0a1b2c3d4e5f6071","label":"0a1b2c3d","current":false,"lastSignIn":null}]})";
+        startSignedIn();
+        nav->navigateTo("settings-page");
+        QTRY_COMPARE(countVisible("deviceRow"), 2);
+        QCOMPARE(countVisible("removeDevice"), 1);                 // never on this device's own row
+        click(find("removeDevice"));
+        QTRY_COMPARE(requestsTo("DELETE", "/devices/0a1b2c3d4e5f6071").size(), 1);
+    }
+
+    void resetTheLookRestoresTheTokens()
+    {
+        startSignedIn();
+        preferences->setProperty("accentColor", QColor("#123456"));
+        nav->navigateTo("settings-page");
+        QTRY_VERIFY(findVisible("resetLook"));
+        QTRY_VERIFY(profile->loaded());   // the Training section grows once it has, which moves what is below it
+        click(find("resetLook"));
+        QTRY_COMPARE(preferences->property("accentColor").value<QColor>(), QColor("#8E5CF5"));
     }
 
     void anUnknownDeviceShowsTheForm()

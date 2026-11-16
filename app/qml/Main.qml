@@ -33,10 +33,11 @@ ApplicationWindow {
         target: Nav
         function onChangePage(page) {
             // Pages inside the shell are the shell's business.
-            if (page !== "login-page" && page !== "nav-shell")
+            if (page !== "login-page" && page !== "nav-shell" && page !== "intro-page")
                 return
             if (window.topPage === page)
                 return
+            // The intro page's component joins with the page itself (Task 18); until then it shows the shell.
             primaryStack.replace(page === "login-page" ? loginPage : navShell)
             window.topPage = page
         }

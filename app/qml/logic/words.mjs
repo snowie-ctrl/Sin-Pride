@@ -65,8 +65,38 @@ export function tileCaption(primary, measure) {
     return [listLabel("muscle", primary), measure ? valueLabel("measure", measure) : ""].filter(s => s.length).join(" · ")
 }
 
+export const navToday = "Today"
+export const navPrograms = "Programs"
 export const navCatalog = "Catalog"
+export const navSettings = "Settings"
 export const signOut = "Sign out"
+
+// Settings (spec §6). "neverSignedIn" avoids the banned word "late" that "lately" holds, so it says "recently".
+export const settingsTitle = "Settings"
+export const accountTitle = "Account"
+export const signedInAs = "Signed in as"
+export const devicesTitle = "Devices that sign in by themselves"
+export const thisDevice = "This device"
+export const removeDevice = "Sign it out"
+export const lastSignIn = "Last signed in"
+export const neverSignedIn = "Not signed in recently"
+export const trainingTitle = "Training"
+export const unitsTitle = "Units"
+export const incrementsTitle = "Step-ups"
+export const upperIncrement = "Upper body"
+export const lowerIncrement = "Lower body"
+export const incrementsHint = "How much a suggestion adds when you've earned it."
+export const goalTitle = "Goal"
+export const daysPerWeekTitle = "Days a week"
+export const weekStartTitle = "Week starts on"
+export const equipmentTitleSettings = "Your equipment"
+export const introTitleSettings = "Introduction"
+export const replayIntro = "Show the introduction again"
+export const replayHint = "It only ever adds a program; yours stay as they are."
+export const lookTitle = "Look"
+export const resetLook = "Reset the look"
+export const settingsSaved = "Saved"
+export const profileUnavailable = "Your settings can't be loaded right now."
 
 export const catalogTitle = "Catalog"
 export const catalogFilter = "Narrow by name"

@@ -21,6 +21,8 @@
 #include "services/Catalog.h"
 #include "services/ExerciseStore.h"
 #include "services/Nav.h"
+#include "services/Profile.h"
+#include "services/Programs.h"
 #include "services/Session.h"
 #include "services/Wiring.h"
 
@@ -49,10 +51,12 @@ int main(int argc, char *argv[])
     Session session(api);
     ExerciseStore exercises(api, dataDir);
     Catalog catalog(exercises, api);
+    Profile profile(api);
+    Programs programs(api);
     // Pictures load through managers this makes, so they carry the session token.
     AuthNetworkFactory networkFactory;
 
-    wireServices(session, accounts, exercises, catalog);
+    wireServices(session, accounts, exercises, catalog, profile, programs);
 
     // Declared after everything QML is given, so it is destroyed first.
     QQmlApplicationEngine engine;
@@ -63,6 +67,8 @@ int main(int argc, char *argv[])
     context->setContextProperty("Session", &session);
     context->setContextProperty("ExerciseStore", &exercises);
     context->setContextProperty("Catalog", &catalog);
+    context->setContextProperty("Profile", &profile);
+    context->setContextProperty("Programs", &programs);
 
     engine.loadFromModule("Pride", "Main");
     if (engine.rootObjects().isEmpty())

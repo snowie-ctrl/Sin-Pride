@@ -2,9 +2,9 @@ import QtQuick
 import QtQuick.Controls
 import "logic/words.mjs" as Words
 
-// The app around its pages: the side rail, the top bar, and the page beside them. Milestone 1's rail holds the
-// Catalog and Sign out; Today, Programs, Progress and Settings join with their milestones. Pages are swapped by name,
-// and a new shell starts on Nav.currentPage. While the server cannot be reached, a banner under the top bar says so.
+// The app around its pages: the side rail, the top bar, and the page beside them. The rail holds Today, Programs,
+// Catalog and Settings, with Sign out at the foot (Progress joins in milestone 3). Pages are swapped by name, and a
+// new shell starts on Nav.currentPage. While the server cannot be reached, a banner under the top bar says so.
 Rectangle {
     id: root
     objectName: "navShell"
@@ -12,11 +12,13 @@ Rectangle {
     color: Preferences.backgroundPrimary
 
     property string currentPage: ""
-    // The last page that is not an exercise, which the Exercise page's Back returns to.
+    // The last page that is not an exercise, which the Exercise page's Back returns to. A routine counts as a list
+    // page, so Back from an exercise opened there returns to it.
     property string lastListPage: "catalog-page"
 
     // Each page adds its own entry here.
-    readonly property var pageComponents: ({ "catalog-page": catalogPage, "exercise-page": exercisePage })
+    readonly property var pageComponents: ({ "catalog-page": catalogPage, "exercise-page": exercisePage,
+                                         "settings-page": settingsPage })
     readonly property string startPage: root.pageComponents[Nav.currentPage] !== undefined ? Nav.currentPage : "catalog-page"
 
     Component.onCompleted: {
@@ -37,6 +39,7 @@ Rectangle {
     }
 
     Component { id: catalogPage; CatalogPage {} }
+    Component { id: settingsPage; SettingsPage {} }
     Component { id: exercisePage; ExercisePage { onBackRequested: Nav.navigateTo(root.lastListPage) } }
 
     Rectangle {
@@ -59,11 +62,33 @@ Rectangle {
             }
             Item { width: 1; height: 12 }
             RailButton {
+                objectName: "railToday"
+                label: Words.navToday
+                pageTag: "today-page"
+                iconSource: "qrc:/images/today.svg"
+                onActivated: Nav.navigateTo("today-page")
+            }
+            RailButton {
+                objectName: "railPrograms"
+                label: Words.navPrograms
+                pageTag: "programs-page"
+                alsoOn: "routine-page"
+                iconSource: "qrc:/images/programs.svg"
+                onActivated: Nav.navigateTo("programs-page")
+            }
+            RailButton {
                 objectName: "railCatalog"
                 label: Words.navCatalog
                 pageTag: "catalog-page"
                 iconSource: "qrc:/images/catalog.svg"
                 onActivated: Nav.navigateTo("catalog-page")
+            }
+            RailButton {
+                objectName: "railSettings"
+                label: Words.navSettings
+                pageTag: "settings-page"
+                iconSource: "qrc:/images/settings.svg"
+                onActivated: Nav.navigateTo("settings-page")
             }
         }
 
@@ -123,9 +148,13 @@ Rectangle {
 
         property string label: ""
         property string pageTag: ""
+        // A second page that lights this button too (the routine editor belongs to Programs).
+        property string alsoOn: ""
         property url iconSource
-        readonly property bool selected: pageTag.length > 0 && (root.currentPage === pageTag
-                                         || (root.currentPage === "exercise-page" && root.lastListPage === pageTag))
+        readonly property bool selected: pageTag.length > 0
+                                         && (root.currentPage === pageTag || root.currentPage === alsoOn
+                                             || (root.currentPage === "exercise-page"
+                                                 && (root.lastListPage === pageTag || root.lastListPage === alsoOn)))
         signal activated()
 
         width: 48

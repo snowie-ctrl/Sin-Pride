@@ -62,11 +62,13 @@ qt_add_qml_module(pride_ui
         qml/pages/LoginPage.qml
         qml/pages/CatalogPage.qml
         qml/pages/ExercisePage.qml
+        qml/pages/SettingsPage.qml
         qml/component/QuickSearch.qml
         qml/component/TintedIcon.qml
         qml/component/ActionButton.qml
         qml/component/InputField.qml
         qml/component/Chip.qml
+        qml/component/Segmented.qml
         qml/component/PictureFrame.qml
         qml/component/ExerciseTile.qml
         qml/component/FilterPanel.qml
