@@ -34,18 +34,22 @@ void Programs::takeProgram(const QJsonObject &data)
 }
 
 void Programs::write(const QString &what, const QString &method, const QString &path, const QJsonObject &body,
-                     Answer answer, int removedId)
+                     Answer answer, int listId)
 {
     const int generation = m_generation;
-    auto done = [this, generation, what, answer, removedId](const Api::Result &result) {
+    auto done = [this, generation, what, answer, listId](const Api::Result &result) {
         if (generation != m_generation)
             return;
         if (!result.ok) {
             const QString code = codeOf(result);
             if (code == QLatin1String("not_found") && what != QLatin1String("adopted")) {
-                m_current.clear();
-                m_routineId = 0;
-                emit currentChanged();
+                // A list write names the program it is about; losing some other program must not close the open one.
+                const bool listWrite = answer == Answer::List;
+                if (!listWrite || listId == currentId()) {
+                    m_current.clear();
+                    m_routineId = 0;
+                    emit currentChanged();
+                }
                 emit gone(what);
                 loadList();
                 loadToday();
@@ -63,12 +67,15 @@ void Programs::write(const QString &what, const QString &method, const QString &
         } else {
             m_programs = result.object.value("data").toArray().toVariantList();
             emit programsChanged();
-            if (removedId && removedId == currentId()) {
+            id = listId;
+            // Only removing closes the program; activating it leaves it open, but its `active` flag is now stale.
+            if (what == QLatin1String("removed") && listId && listId == currentId()) {
                 m_current.clear();
                 m_routineId = 0;
                 emit currentChanged();
+            } else if (currentId()) {
+                open(currentId());
             }
-            id = removedId;
         }
         loadToday();
         emit saved(what, id);
@@ -100,10 +107,15 @@ void Programs::loadList()
 void Programs::open(int programId)
 {
     const int generation = m_generation;
-    m_api.get(QStringLiteral("/programs/%1").arg(programId), QUrlQuery(), [this, generation](const Api::Result &result) {
+    m_api.get(QStringLiteral("/programs/%1").arg(programId), QUrlQuery(), [this, generation, programId](const Api::Result &result) {
         if (generation != m_generation)
             return;
         if (result.httpStatus == 404) {
+            if (programId == currentId()) {
+                m_current.clear();
+                m_routineId = 0;
+                emit currentChanged();
+            }
             emit gone(QStringLiteral("program"));
             loadList();
             return;

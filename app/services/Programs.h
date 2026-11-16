@@ -92,7 +92,7 @@ private:
     // Sends one write; its answer replaces the open program (or the list), then the list and Today are asked for
     // again. A 404 is gone(); any other refusal is failed() with its code and field.
     void write(const QString &what, const QString &method, const QString &path, const QJsonObject &body, Answer answer,
-               int removedId = 0);
+               int listId = 0);
     void takeProgram(const QJsonObject &data);
     QDate dateToday() const { return m_fixedToday.isValid() ? m_fixedToday : QDate::currentDate(); }
     static QString codeOf(const Api::Result &result);

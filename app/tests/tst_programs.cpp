@@ -194,6 +194,43 @@ private slots:
         QCOMPARE(failed.size(), 0);
     }
 
+    void activatingTheOpenProgramKeepsItOpen()
+    {
+        programs->open(5);
+        QTRY_COMPARE(programs->currentId(), 5);
+        server->methodResponses["POST " + p("/programs/5/activate")] = list;
+        QSignalSpy saved(programs.get(), &Programs::saved);
+        programs->activate(5);
+        QTRY_COMPARE(saved.size(), 1);
+        QCOMPARE(saved.first().at(0).toString(), QStringLiteral("activated"));
+        QCOMPARE(saved.first().at(1).toInt(), 5);
+        QCOMPARE(programs->currentId(), 5);
+        QTRY_VERIFY(count("GET", p("/programs/5")) >= 2);
+    }
+
+    void openingAProgramGoneElsewhereClosesIt()
+    {
+        programs->open(5);
+        QTRY_COMPARE(programs->currentId(), 5);
+        server->statuses[p("/programs/5")] = 404;
+        QSignalSpy gone(programs.get(), &Programs::gone);
+        programs->open(5);
+        QTRY_COMPARE(gone.size(), 1);
+        QCOMPARE(programs->currentId(), 0);
+    }
+
+    void aGoneOtherProgramLeavesTheOpenOneOpen()
+    {
+        programs->open(5);
+        QTRY_COMPARE(programs->currentId(), 5);
+        server->methodStatuses["DELETE " + p("/programs/6")] = 404;
+        server->methodResponses["DELETE " + p("/programs/6")] = R"({"status":"error","message":"not found"})";
+        QSignalSpy gone(programs.get(), &Programs::gone);
+        programs->remove(6);
+        QTRY_COMPARE(gone.size(), 1);
+        QCOMPARE(programs->currentId(), 5);
+    }
+
     void noServerIsNetworkAndChangesNothing()
     {
         programs->open(5);
