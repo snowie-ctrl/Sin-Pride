@@ -242,3 +242,24 @@ export function saveProblem(code, field) {
         return limitReached(field)
     return failure(code)
 }
+
+// The intro (spec §6): four questions and a suggested starter.
+export const introWelcomeTitle = "Welcome to Pride"
+export const introWelcomeBody = "Four quick questions and you'll have a program to follow. Already know your routine? Skip, and build it yourself."
+export const introDaysTitle = "How many days a week can you train?"
+export const introEquipmentTitle = "What do you have to train with?"
+export const introGoalTitle = "What are you after?"
+export const introStarterHeading = "Here's a place to start"
+export const introNext = "Next"
+export const introBack = "Back"
+export const introSkip = "Skip"
+export const introUseThis = "Use this"
+export const introTweak = "Tweak it first"
+export const introBuildOwn = "Build my own"
+export const introOthers = "Other starters"
+export const introMissing = "A few of its exercises aren't in the catalog yet, so they're left out."
+export const introUnavailable = "This starter's exercises aren't in the catalog yet. Build your own, or try another."
+export const introLoading = "Picking a starter for you…"
+export const introPlanned = "Planned for"
+export const myProgram = "My program"
+export function introStepOf(n) { return `Step ${n} of 4` }

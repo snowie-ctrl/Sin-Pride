@@ -71,6 +71,28 @@ static QByteArray profileJson(const char *intro, const char *equipment = R"(["ba
            + equipment + "}}";
 }
 
+static QByteArray startersJson(bool withItems = true)
+{
+    const QByteArray items = withItems
+        ? R"([{"exerciseId":1,"name":"Barbell Curl","measure":"weight_reps","sets":3,"repsMin":8,"repsMax":12,"targetSeconds":null,"restSeconds":90}])"
+        : "[]";
+    return R"({"status":"ok","data":[
+ {"key":"foundations","title":"Foundations","blurb":"Two full-body days.","suggested":false,"variant":"dumbbell",
+  "days":[0,2,4],"routines":[{"title":"Full body A","items":)" + items + R"(}],"missing":[]},
+ {"key":"upperLower","title":"Upper/Lower","blurb":"Upper one day, legs the next.","suggested":true,"variant":"dumbbell",
+  "days":[0,1,3,4],"routines":[{"title":"Upper","items":)" + items + R"(},{"title":"Lower","items":)" + items + R"(}],
+  "missing":["Plank"]}]})";
+}
+
+static QByteArray programJson(int id = 5)
+{
+    return QByteArray(R"({"status":"ok","data":{"id":)") + QByteArray::number(id) + R"(,"title":"Upper/Lower","active":true,
+ "starterKey":"upperLower","days":[0,1,3,4],"updatedAt":"2026-11-15T09:00:00Z","routines":[
+ {"id":50,"title":"Upper","items":[{"id":500,"exerciseId":1,"sets":3,"repsMin":8,"repsMax":12,"targetWeight":135,
+  "targetUnit":"lb","targetSeconds":null,"targetDistance":null,"distanceUnit":null,"restSeconds":90,"note":null}]},
+ {"id":51,"title":"Lower","items":[]}]}})";
+}
+
 static QByteArray pictureBytes()
 {
     QImage image(32, 24, QImage::Format_RGB32);
@@ -259,6 +281,31 @@ class TestPages : public QObject
         QTRY_COMPARE(catalog->shownCount(), 3);
     }
 
+    // A new account, intro pending; PUT /profile answers done, as the server would once the intro is finished.
+    void startInTheIntro()
+    {
+        server->responses[path("/profile")] = profileJson("pending", "[]");
+        server->methodResponses["PUT " + path("/profile")] = profileJson("done", R"(["dumbbell","bodyweight","bench"])");
+        server->responses[path("/starters")] = startersJson();
+        start();
+        QTRY_VERIFY(findVisible("introPage"));
+    }
+
+    void walkToTheStarter()
+    {
+        click(find("introNext"));
+        QTRY_VERIFY(findVisible("introDays-4"));
+        click(find("introDays-4"));
+        click(find("introNext"));
+        QTRY_VERIFY(findVisible("introPreset-dumbbells"));
+        click(find("introPreset-dumbbells"));
+        click(find("introNext"));
+        QTRY_VERIFY(findVisible("introGoal-muscle"));
+        click(find("introGoal-muscle"));
+        click(find("introNext"));
+        QTRY_VERIFY(findVisible("introStarterTitle"));
+    }
+
 private slots:
     void initTestCase()
     {
@@ -411,6 +458,104 @@ private slots:
         QTRY_VERIFY(profile->loaded());   // the Training section grows once it has, which moves what is below it
         click(find("resetLook"));
         QTRY_COMPARE(preferences->property("accentColor").value<QColor>(), QColor("#8E5CF5"));
+    }
+
+    // ---- The Intro ----
+
+    void aPendingIntroShowsAfterSignIn()
+    {
+        startInTheIntro();
+        QVERIFY(findVisible("introSkip"));
+        QCOMPARE(find("introStep")->property("step").toInt(), 0);
+    }
+
+    void theAnswersAreSavedOnceAndTheSuggestedStarterShows()
+    {
+        startInTheIntro();
+        walkToTheStarter();
+        QCOMPARE(requestsTo("PUT", "/profile").size(), 1);
+        QCOMPARE(lastBodyTo("PUT", "/profile"),
+                 QJsonObject({{"daysPerWeek", 4}, {"equipment", QJsonArray{"dumbbell", "bodyweight", "bench"}},
+                              {"goal", "muscle"}}));
+        QCOMPARE(find("introStarterTitle")->property("text").toString(), QStringLiteral("Upper/Lower"));
+        QCOMPARE(countVisible("introPreviewRoutine"), 2);
+        QVERIFY(findVisible("introMissing"));
+    }
+
+    void useThisAdoptsAndLandsOnToday()
+    {
+        startInTheIntro();
+        server->methodResponses["POST " + path("/starters/upperLower/adopt")] = programJson();
+        walkToTheStarter();
+        click(find("introUseThis"));
+        QTRY_COMPARE(requestsTo("POST", "/starters/upperLower/adopt").size(), 1);
+        QTRY_COMPARE(lastBodyTo("PUT", "/profile"), QJsonObject({{"introState", "done"}}));
+        QTRY_COMPARE(nav->currentPage(), QStringLiteral("today-page"));
+        QTRY_VERIFY(findVisible("navShell"));
+    }
+
+    void tweakItFirstOpensTheFirstRoutine()
+    {
+        startInTheIntro();
+        server->methodResponses["POST " + path("/starters/upperLower/adopt")] = programJson();
+        walkToTheStarter();
+        click(find("introTweak"));
+        QTRY_COMPARE(nav->currentPage(), QStringLiteral("routine-page"));
+        QCOMPARE(programs->currentRoutineId(), 50);
+    }
+
+    void buildMyOwnMakesAnEmptyProgram()
+    {
+        startInTheIntro();
+        server->methodResponses["POST " + path("/programs")] = programJson();
+        walkToTheStarter();
+        click(find("introBuildOwn"));
+        QTRY_COMPARE(lastBodyTo("POST", "/programs"), QJsonObject({{"title", "My program"}}));
+        QTRY_COMPARE(nav->currentPage(), QStringLiteral("programs-page"));
+    }
+
+    void skipFirstTimeMarksItSkippedAndMakesAnEmptyProgram()
+    {
+        startInTheIntro();
+        server->methodResponses["POST " + path("/programs")] = programJson();
+        click(find("introSkip"));
+        QTRY_COMPARE(lastBodyTo("PUT", "/profile"), QJsonObject({{"introState", "skipped"}}));
+        QTRY_COMPARE(lastBodyTo("POST", "/programs"), QJsonObject({{"title", "My program"}}));
+        QTRY_COMPARE(nav->currentPage(), QStringLiteral("programs-page"));
+    }
+
+    void aReplaysSkipChangesNothing()
+    {
+        startSignedIn();
+        nav->navigateTo("intro-page");
+        QTRY_VERIFY(findVisible("introPage"));
+        click(find("introNext"));
+        QTRY_VERIFY(findVisible("introDays-4"));
+        click(find("introSkip"));
+        QTRY_COMPARE(nav->currentPage(), QStringLiteral("settings-page"));
+        QVERIFY(requestsTo("PUT", "/profile").isEmpty());
+        QVERIFY(requestsTo("POST", "/programs").isEmpty());
+    }
+
+    void aStarterWithNothingInTheCatalogSaysSo()
+    {
+        startInTheIntro();
+        server->responses[path("/starters")] = startersJson(false);
+        walkToTheStarter();
+        QVERIFY(findVisible("introUnavailable"));
+        QVERIFY(!find("introUseThis")->isEnabled());
+        QVERIFY(find("introBuildOwn")->isEnabled());
+    }
+
+    void anyoneElsesSaveNeverMovesTheIntro()
+    {
+        startInTheIntro();
+        walkToTheStarter();
+        // A program made elsewhere (Programs' own page, say) must not look like this page's Build my own.
+        programs->create(QStringLiteral("Elsewhere"));
+        QTRY_VERIFY(!requestsTo("POST", "/programs").isEmpty());
+        QTest::qWait(300);
+        QVERIFY(findVisible("introPage"));
     }
 
     void anUnknownDeviceShowsTheForm()
