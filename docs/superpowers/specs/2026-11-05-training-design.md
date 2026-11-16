@@ -139,7 +139,7 @@ creates all of these.
 **Accounts** (as in Gluttony):
 - `Users` (`UserID`, `Username` unique, `PasswordHash`, `CreatedAt`)
 - `Devices` (`Fingerprint` PK, `UserID`)
-- `Sessions` (`Token` CHAR(64) PK, `UserID`, `DeviceFingerprint`, `ExpiresAt`)
+- `Sessions` (`Token` CHAR(64) PK, `UserID`, `DeviceFingerprint`, `CreatedAt`, `ExpiresAt`)
 - `LoginKeys` (`KeyValue` PK, `Used`, `UsedBy`, `CreatedAt`). The owner inserts these by hand.
 
 **Profile:**
@@ -499,6 +499,7 @@ schema items must be settled before milestone 4 loads it.
   Think about this before the iOS part.
 - The release package carries `secrets.json` beside the exe; it must never be committed.
 - `tools/check-public.ps1` does not read binary files; strip metadata from new images before committing them.
+- Confirm the database session time zone is UTC (timestamps are labelled Z), or set time_zone='+00:00' on connect.
 
 **Later (public readiness):**
-- Deleting an account must delete its workouts before its own exercises: `WorkoutExercises.ExerciseID` restricts, so a cascade from `Users` through `Exercises` would be refused.
+- Deleting an account must delete its workouts before its own exercises: `WorkoutExercises.ExerciseID` restricts, so a cascade from `Users` through `Exercises` would be refused. Likewise `RoutineItems.ExerciseID` no longer cascades, so delete a person's programs before their own exercises.

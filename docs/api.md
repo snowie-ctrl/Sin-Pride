@@ -163,7 +163,7 @@ A refused field is `400` naming it; an id that is not the person's is `404`.
 
 A starter: `{key, title, blurb, suggested, variant, days, routines: [{title, items: [{exerciseId, name, measure, sets, repsMin, repsMax, targetSeconds, restSeconds}]}], missing: [keys]}`.
 
-Each starter is filled for the caller: the variant their equipment allows (gym, dumbbell, bodyweight), the planned weekdays for their days a week, 3 sets of their goal's rep range (timed items keep their own seconds), 90 s rest for weight × reps and 60 s otherwise. An exercise not in the catalog is left out and listed in `missing`. `suggested` marks the starter for their days a week. Adopting makes a new program, the active one.
+Each starter is filled for the caller: the variant their equipment allows (gym, dumbbell, bodyweight), the planned weekdays for their days a week, 3 sets of their goal's rep range (timed items keep their own seconds), 90 s rest for weight × reps and 60 s otherwise. An exercise not in the catalog is left out and listed in `missing`. `suggested` marks the starter for their days a week. Adopting makes a new program, the active one. A routine whose exercises are all missing from the catalog comes back with no items (the starters are left as written); the rest of the starter is still adopted.
 
 ## Today
 
