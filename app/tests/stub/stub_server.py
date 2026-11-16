@@ -15,12 +15,16 @@ STUB_PICTURES_FAIL=1   every picture is 404, to see the placeholders.
 STUB_SLOW=<ms>         pictures answer that late, to see them loading.
 STUB_SNAPSHOT=<dir>    serve that folder instead of snapshot/.
 STUB_SEED=1            the stub reader starts with Upper/Lower adopted (dumbbell and bench, 4 days a week, goal muscle,
-                       intro done) and one Upper workout on the Monday of the week holding STUB_TODAY.
+                       intro done) and nine workouts: Upper on the Mondays and Lower on the Thursdays of the four weeks
+                       before the week holding STUB_TODAY, then that week's Monday Upper. The first exercise of each
+                       routine climbs and tops its range at the end (an open step-up), the second holds steady (a
+                       stall), the rest climb slowly (crowns).
 STUB_INTRO=1           the stub reader's intro is "pending", so the app opens it.
-STUB_TODAY=<date>      YYYY-MM-DD: the day STUB_SEED's workout is placed by, instead of the real today.
+STUB_TODAY=<date>      YYYY-MM-DD: the stub's own today: where STUB_SEED places its workouts, and the day before the
+                       latest a workout may be logged on.
 
-Milestone 2's routes are kept per reader in memory. Checks, rules and starters are server/'s own modules, imported
-here, so the stub can never disagree with the server on them.
+Every route is kept per reader in memory. Checks, rules and starters are server/'s own modules, imported here, so
+the stub can never disagree with the server on them; the rows the rules read are shaped as prideHistory reads them.
 """
 import copy
 import functools
@@ -30,6 +34,7 @@ import re
 import sys
 import threading
 import time
+import uuid
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -61,7 +66,8 @@ def catalogFolder():
 def newPerson(introState):
     return {"profile": {"units": "lb", "goal": "general", "daysPerWeek": 3, "upperIncrement": 5.0,
                         "lowerIncrement": 10.0, "weekStart": "mon", "introState": introState},
-            "equipment": [], "programs": {}, "nextId": 1000, "own": {}, "workouts": []}
+            "equipment": [], "programs": {}, "nextId": 1000, "own": {}, "workouts": [],
+            "suggestions": []}
 
 
 def reset():
@@ -81,13 +87,59 @@ def reset():
         seed(state["people"][UID])
 
 
+def stubToday():
+    return date.fromisoformat(os.environ["STUB_TODAY"]) if os.environ.get("STUB_TODAY") else date.today()
+
+
+def latestDay():
+    """As prideLogRoutes.latestDay, by the stub's own today."""
+    return stubToday() + timedelta(days=1)
+
+
 def seed(who):
     who["profile"].update(goal="muscle", daysPerWeek=4)
     who["equipment"] = ["dumbbell", "bench", "bodyweight"]
     program = adopt(who, "upperLower")
-    day = date.fromisoformat(os.environ.get("STUB_TODAY") or date.today().isoformat())
-    who["workouts"].append({"performedOn": rules.weekStartDate(day, "mon"), "programId": program["id"],
-                            "routineId": program["routines"][0]["id"], "createdAt": 1})
+    monday = rules.weekStartDate(stubToday(), "mon")
+    upper, lower = program["routines"][0], program["routines"][1]
+    sessions = []
+    for weeksBack in range(4, 0, -1):
+        sessions.append((upper, monday - timedelta(weeks=weeksBack)))
+        sessions.append((lower, monday - timedelta(weeks=weeksBack) + timedelta(days=3)))
+    sessions.append((upper, monday))
+    for routine, day in sessions:
+        done = sum(1 for r, d in sessions if r is routine and d < day)
+        last = done == sum(1 for r, _ in sessions if r is routine) - 1
+        workout, refusal = storeWorkout(who, {
+            "clientId": str(uuid.uuid4()), "performedOn": day.isoformat(), "routineId": routine["id"], "note": None,
+            "exercises": [{"exerciseId": item["exerciseId"], "itemId": item["id"],
+                           "sets": seedSets(who, item, place, done, last)}
+                          for place, item in enumerate(routine["items"])]})
+        assert refusal is None, refusal
+
+
+def seedSets(who, item, place, n, last):
+    """A believable history (see the docstring): the first exercise climbs and tops out at the end, the second holds
+    steady, the rest climb slowly. `n` is how many of this routine's workouts came before this one."""
+    measure = lookup(who, item["exerciseId"])["measure"]
+    count = item["sets"]
+    top = item["repsMax"] or 12
+    if measure == "time":
+        target = item["targetSeconds"] or 30
+        seconds = target if last and place == 0 else max(5, target - 10 + 2 * n) if place == 0 else \
+            max(5, target - 5) if place == 1 else max(5, target - 6 + n)
+        return [{"seconds": seconds} for _ in range(count)]
+    if measure == "distance_time":
+        return [{"distance": 2 + 0.5 * n, "distanceUnit": "km", "seconds": 900 + 30 * n}]
+    if place == 0:
+        reps, weight = ([top] * count if last else [max(1, top - 1 - s) for s in range(count)]), 25 + 5 * n
+    elif place == 1:
+        reps, weight = [max(1, top - 2 - s) for s in range(count)], 30
+    else:
+        reps, weight = [max(1, top - s) for s in range(count)], 20 + 5 * (n // 2)
+    if measure == "reps":
+        return [{"reps": r} for r in reps]
+    return [{"weight": weight, "weightUnit": "lb", "reps": r} for r in reps]
 
 
 def ok(data=None, status="ok", **extra):
@@ -391,9 +443,13 @@ def deleteOwnExercise(exerciseId):
                 touched += 1
                 routine["items"] = kept
                 program["updatedAt"] = stamp()
-    # The stub logs no workout that names an own exercise, so one is never hidden, only deleted.
-    del who["own"][exerciseId]
-    return ok({"routinesTouched": touched, "hidden": False})
+    # Logged in a workout: hidden, so history keeps it (spec §8); otherwise deleted.
+    hidden = any(e["exerciseId"] == exerciseId for w in who["workouts"] for e in w["exercises"])
+    if hidden:
+        who["own"][exerciseId]["removed"] = True
+    else:
+        del who["own"][exerciseId]
+    return ok({"routinesTouched": touched, "hidden": hidden})
 
 
 # Starters
@@ -680,7 +736,141 @@ def reorderItems():
     return answer(program)
 
 
-# Today
+# Today, workouts, progress and suggestions
+
+def rotationOf(who):
+    """The active program and the routine next up (spec §5), as prideHistory.rotation."""
+    program = next((p for p in who["programs"].values() if p["active"]), None)
+    if program is None:
+        return None, None
+    latest = max((w for w in who["workouts"] if w["programId"] == program["id"]),
+                 key=lambda w: (w["performedOn"], w["createdAt"], w["id"]), default=None)
+    return program, rules.nextUp([r["id"] for r in program["routines"]], latest["routineId"] if latest else None)
+
+
+def nextUpOf(who):
+    program, nextId = rotationOf(who)
+    if nextId is None:
+        return None
+    return {"routineId": nextId, "title": next(r["title"] for r in program["routines"] if r["id"] == nextId)}
+
+
+def rowsOf(who, exerciseIds=None, itemIds=None):
+    """The reader's logged sets as prideRules' rows, in time order."""
+    found = []
+    for w in who["workouts"]:
+        for order, e in enumerate(w["exercises"]):
+            if (exerciseIds is not None and e["exerciseId"] not in exerciseIds) or \
+                    (itemIds is not None and e["itemId"] not in itemIds):
+                continue
+            for number, s in enumerate(e["sets"], start=1):
+                found.append({"workoutId": w["id"], "performedOn": w["performedOn"], "createdAt": w["createdAt"],
+                              "exerciseId": e["exerciseId"], "itemId": e["itemId"], "order": order, "setNo": number,
+                              **s})
+    return sorted(found, key=lambda r: (rules.when(r), r["order"], r["setNo"]))
+
+
+def measuresIn(who, rows):
+    return {r["exerciseId"]: lookup(who, r["exerciseId"])["measure"] for r in rows}
+
+
+def openFor(who, itemId):
+    return next((dict(s) for s in who["suggestions"] if s["itemId"] == itemId and s["state"] == "open"), None)
+
+
+def draftItem(who, item, logged):
+    exercise = lookup(who, item["exerciseId"]) or {}
+    return {**copy.deepcopy(item), "measure": exercise.get("measure"),
+            "last": rules.lastFor(item["id"], item["exerciseId"], logged), "suggestion": openFor(who, item["id"])}
+
+
+def recalc(who, itemIds):
+    """As prideHistory.recalculate: each item's suggestions settled by prideRules.suggestionFor."""
+    p = who["profile"]
+    profile = {"units": p["units"], "upperIncrement": p["upperIncrement"], "lowerIncrement": p["lowerIncrement"]}
+    for itemId in sorted({i for i in itemIds if i}):
+        _, _, item = findItem(who, itemId)
+        if item is None:
+            continue
+        exercise = lookup(who, item["exerciseId"])
+        ruled = {"id": itemId, "measure": exercise["measure"], "region": exercise["region"], "sets": item["sets"],
+                 "repsMin": item["repsMin"], "repsMax": item["repsMax"], "targetWeight": item["targetWeight"],
+                 "targetUnit": item["targetUnit"], "targetSeconds": item["targetSeconds"]}
+        mine = [s for s in who["suggestions"] if s["itemId"] == itemId]
+        withdraw, create = rules.suggestionFor(ruled, rowsOf(who, itemIds={itemId}), profile, mine)
+        for s in mine:
+            if s["id"] in withdraw:
+                s["state"] = "withdrawn"
+        if create is not None:
+            who["suggestions"].append({"id": newId(who), "itemId": itemId, "state": "open", **create})
+
+
+def measureFor(who, exerciseId, workout=None):
+    """As prideHistory.measuresFor: the catalog's or the reader's own, not hidden, or already in the workout."""
+    found = lookup(who, exerciseId)
+    if found is None:
+        return None
+    if found["removed"] and not (workout and any(e["exerciseId"] == exerciseId for e in workout["exercises"])):
+        return None
+    return found["measure"]
+
+
+def storeWorkout(who, data, existing=None):
+    """Checks and stores a new workout, or replaces an existing one's date, note and exercises (the routine stays,
+    plan decision 7); then settles the suggestions of every item it logged. (workout, None) or (None, refusal)."""
+    try:
+        clean = checks.workout(data, latestDay(), lambda e: measureFor(who, e, existing),
+                               needClientId=existing is None)
+    except checks.Refusal as refusal:
+        return None, refusal
+    exercises = []
+    for e in clean["exercises"]:
+        item = findItem(who, e["itemId"])[2] if e["itemId"] else None
+        kept = e["itemId"] if item is not None and item["exerciseId"] == e["exerciseId"] else None
+        exercises.append({"exerciseId": e["exerciseId"], "itemId": kept, "note": e["note"], "sets": e["sets"]})
+    if existing is None:
+        program, routine = findRoutine(who, clean["routineId"]) if clean["routineId"] else (None, None)
+        workout = {"id": newId(who), "clientId": clean["clientId"], "performedOn": clean["performedOn"],
+                   "createdAt": newId(who), "stamp": stamp(), "updatedAt": stamp(),
+                   "programId": program["id"] if routine else None, "routineId": routine["id"] if routine else None,
+                   "note": clean["note"], "exercises": exercises}
+        who["workouts"].append(workout)
+        before = []
+    else:
+        workout = existing
+        before = [e["itemId"] for e in existing["exercises"]]
+        workout.update(performedOn=clean["performedOn"], note=clean["note"], exercises=exercises, updatedAt=stamp())
+    recalc(who, before + [e["itemId"] for e in exercises])
+    return workout, None
+
+
+def workoutJson(who, w):
+    program, routine = findRoutine(who, w["routineId"]) if w["routineId"] else (None, None)
+    return {"id": w["id"], "clientId": w["clientId"], "performedOn": w["performedOn"].isoformat(), "startedAt": None,
+            "endedAt": None, "programId": program["id"] if routine else None,
+            "routineId": routine["id"] if routine else None, "title": routine["title"] if routine else None,
+            "note": w["note"], "createdAt": w["stamp"], "updatedAt": w["updatedAt"],
+            "exercises": [{"exerciseId": e["exerciseId"],
+                           "itemId": e["itemId"] if e["itemId"] and findItem(who, e["itemId"])[2] else None,
+                           "measure": (lookup(who, e["exerciseId"]) or {}).get("measure"), "note": e["note"],
+                           "sets": copy.deepcopy(e["sets"])} for e in w["exercises"]]}
+
+
+def resultOf(who, w):
+    logged = rowsOf(who, exerciseIds={e["exerciseId"] for e in w["exercises"]})
+    return {"workout": workoutJson(who, w),
+            "crowns": rules.crownsOf(w["id"], logged, measuresIn(who, logged), who["profile"]["units"]),
+            "suggestions": [dict(s) for s in who["suggestions"] if s["basedOn"] == w["id"] and s["state"] == "open"],
+            "nextUp": nextUpOf(who)}
+
+
+def findWorkout(who, workoutId):
+    return next((w for w in who["workouts"] if w["id"] == workoutId), None)
+
+
+def closedAnswer():
+    return jsonify({"status": "closed", "message": "that suggestion is no longer open"}), 409
+
 
 @app.route(API + "/today", methods=["GET"])
 def today():
@@ -692,23 +882,171 @@ def today():
     weekStart = who["profile"]["weekStart"]
     first = rules.weekStartDate(day, weekStart)
     done = {w["performedOn"] for w in who["workouts"] if first <= w["performedOn"] <= first + timedelta(days=6)}
-    program = next((p for p in who["programs"].values() if p["active"]), None)
+    logged = rowsOf(who)
+    crowns = rules.latestCrowns(logged, measuresIn(who, logged), who["profile"]["units"]) if logged else []
+    program, nextId = rotationOf(who)
     if program is None:
         return ok({"program": None, "nextUp": None, "plannedDay": None,
-                   "week": rules.week(day, weekStart, set(), done)})
+                   "week": rules.week(day, weekStart, set(), done), "crowns": crowns})
     routines = program["routines"]
-    latest = max((w for w in who["workouts"] if w["programId"] == program["id"]),
-                 key=lambda w: (w["performedOn"], w["createdAt"]), default=None)
-    nextId = rules.nextUp([r["id"] for r in routines], latest["routineId"] if latest else None)
     nextUp = None
     if nextId is not None:
         routine = next(r for r in routines if r["id"] == nextId)
-        nextUp = {"routineId": nextId, "title": routine["title"], "items": copy.deepcopy(routine["items"])}
+        nextUp = {"routineId": nextId, "title": routine["title"],
+                  "items": [draftItem(who, i, logged) for i in routine["items"]]}
     weekdays = set(program["days"]) if routines else set()
     planned = rules.plannedDay(day, weekdays, day in done) if routines else None
     return ok({"program": {"id": program["id"], "title": program["title"]}, "nextUp": nextUp,
                "plannedDay": planned.isoformat() if planned else None,
-               "week": rules.week(day, weekStart, weekdays, done)})
+               "week": rules.week(day, weekStart, weekdays, done), "crowns": crowns})
+
+
+@app.route(API + "/routines", methods=["GET"])
+def routineMenu():
+    who = person()
+    programs = sorted(who["programs"].values(), key=lambda p: not p["active"])
+    return ok([{"id": r["id"], "title": r["title"], "programId": p["id"], "programTitle": p["title"],
+                "active": p["active"]} for p in programs for r in p["routines"]])
+
+
+@app.route(API + "/workouts/draft", methods=["GET"])
+def draftOf():
+    who = person()
+    try:
+        routineId = checks.idOf(request.args.get("routineId", type=int), "routineId")
+    except checks.Refusal as refusal:
+        return refuse(refusal)
+    program, routine = findRoutine(who, routineId)
+    if routine is None:
+        return notFound()
+    logged = rowsOf(who)
+    return ok({"routineId": routineId, "title": routine["title"], "programId": program["id"],
+               "items": [draftItem(who, i, logged) for i in routine["items"]]})
+
+
+@app.route(API + "/workouts", methods=["GET"])
+def workoutList():
+    who = person()
+    newest = sorted(who["workouts"], key=lambda w: (w["performedOn"], w["createdAt"], w["id"]), reverse=True)
+    rows = []
+    for w in newest:
+        shown = workoutJson(who, w)
+        rows.append({"id": w["id"], "performedOn": shown["performedOn"], "routineId": shown["routineId"],
+                     "title": shown["title"], "note": w["note"], "exerciseCount": len(w["exercises"]),
+                     "setCount": sum(len(e["sets"]) for e in w["exercises"]), "updatedAt": w["updatedAt"]})
+    return ok(rows)
+
+
+@app.route(API + "/workouts/<int:workoutId>", methods=["GET"])
+def workoutOne(workoutId):
+    who = person()
+    w = findWorkout(who, workoutId)
+    return notFound() if w is None else ok(workoutJson(who, w))
+
+
+@app.route(API + "/workouts", methods=["POST"])
+@locked
+def logWorkout():
+    who = person()
+    data = body()
+    given = data.get("clientId")
+    if isinstance(given, str) and checks.CLIENT_ID.fullmatch(given):
+        stored = next(((owner, w) for owner, other in state["people"].items() for w in other["workouts"]
+                       if w["clientId"] == given.lower()), None)
+        if stored is not None:
+            if stored[0] != uid():
+                return refuse(checks.Refusal("clientId", "that clientId is already used"))
+            return ok(resultOf(who, stored[1]))
+    workout, refusal = storeWorkout(who, data)
+    return refuse(refusal) if refusal else ok(resultOf(who, workout))
+
+
+@app.route(API + "/workouts/<int:workoutId>", methods=["PUT"])
+@locked
+def editWorkout(workoutId):
+    who = person()
+    existing = findWorkout(who, workoutId)
+    if existing is None:
+        return notFound()
+    workout, refusal = storeWorkout(who, body(), existing)
+    return refuse(refusal) if refusal else ok(resultOf(who, workout))
+
+
+@app.route(API + "/workouts/<int:workoutId>", methods=["DELETE"])
+@locked
+def deleteWorkout(workoutId):
+    who = person()
+    existing = findWorkout(who, workoutId)
+    if existing is None:
+        return notFound()
+    who["workouts"].remove(existing)
+    for s in who["suggestions"]:
+        if s["basedOn"] == workoutId:
+            s["basedOn"] = None                       # as ON DELETE SET NULL
+    recalc(who, [e["itemId"] for e in existing["exercises"]])
+    return ok({"deleted": workoutId, "nextUp": nextUpOf(who)})
+
+
+@app.route(API + "/progress/<int:exerciseId>", methods=["GET"])
+def progressOf(exerciseId):
+    who = person()
+    found = lookup(who, exerciseId)
+    if found is None:
+        return notFound()
+    units, measure = who["profile"]["units"], found["measure"]
+    logged = rowsOf(who, exerciseIds={exerciseId})
+    return ok({"exerciseId": exerciseId, "measure": measure, "units": units,
+               "points": rules.series(logged, measure, units), "records": rules.records(logged, measure, units),
+               "recent": rules.recent(logged)})
+
+
+@app.route(API + "/records", methods=["GET"])
+def recordList():
+    who = person()
+    logged = rowsOf(who)
+    return ok(rules.recordsByExercise(logged, measuresIn(who, logged), who["profile"]["units"]))
+
+
+def findSuggestion(who, suggestionId):
+    """The reader's suggestion while its item exists (a deleted item takes its suggestions with it, ON DELETE
+    CASCADE)."""
+    return next((s for s in who["suggestions"] if s["id"] == suggestionId and findItem(who, s["itemId"])[2]), None)
+
+
+@app.route(API + "/suggestions/<int:suggestionId>/accept", methods=["POST"])
+@locked
+def acceptSuggestion(suggestionId):
+    who = person()
+    s = findSuggestion(who, suggestionId)
+    if s is None:
+        return notFound()
+    if s["state"] != "open":
+        return closedAnswer()
+    if s["kind"] != "increase":
+        return refuse(checks.Refusal("kind", "a stall is noted, not taken"))
+    program, _, item = findItem(who, s["itemId"])
+    if s["weight"] is not None:
+        item.update(targetWeight=s["weight"], targetUnit=s["unit"])
+    elif s["repsMin"] is not None:
+        item.update(repsMin=s["repsMin"], repsMax=s["repsMax"])
+    else:
+        item["targetSeconds"] = s["seconds"]
+    s["state"] = "accepted"
+    program["updatedAt"] = stamp()
+    return ok({"suggestion": dict(s), "programId": program["id"]})
+
+
+@app.route(API + "/suggestions/<int:suggestionId>/dismiss", methods=["POST"])
+@locked
+def dismissSuggestion(suggestionId):
+    who = person()
+    s = findSuggestion(who, suggestionId)
+    if s is None:
+        return notFound()
+    if s["state"] != "open":
+        return closedAnswer()
+    s["state"] = "dismissed"
+    return ok({"suggestion": dict(s)})
 
 
 reset()
