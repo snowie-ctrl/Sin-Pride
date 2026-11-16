@@ -65,6 +65,7 @@ qt_add_qml_module(pride_ui
         qml/pages/SettingsPage.qml
         qml/pages/IntroPage.qml
         qml/pages/TodayPage.qml
+        qml/pages/ProgramsPage.qml
         qml/component/QuickSearch.qml
         qml/component/TintedIcon.qml
         qml/component/ActionButton.qml
@@ -77,6 +78,8 @@ qt_add_qml_module(pride_ui
         qml/component/ExerciseTile.qml
         qml/component/FilterPanel.qml
         qml/component/WeekStrip.qml
+        qml/component/DayChips.qml
+        qml/component/ConfirmDialog.qml
         qml/logic/words.mjs
         qml/logic/forms.mjs
         qml/logic/units.mjs

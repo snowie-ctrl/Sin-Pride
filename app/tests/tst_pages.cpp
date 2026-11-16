@@ -472,6 +472,162 @@ private slots:
         QVERIFY(!find("crownsRow"));
     }
 
+    static QByteArray twoPrograms()
+    {
+        return R"({"status":"ok","data":[
+ {"id":5,"title":"Upper/Lower","active":true,"starterKey":"upperLower","days":[0,1,3,4],"routineCount":2,"updatedAt":"2026-11-15T09:00:00Z"},
+ {"id":6,"title":"Mine","active":false,"starterKey":null,"days":[],"routineCount":0,"updatedAt":"2026-11-14T09:00:00Z"}]})";
+    }
+
+    void startOnPrograms()
+    {
+        server->responses[path("/programs")] = twoPrograms();
+        server->responses[path("/programs/5")] = programJson();
+        start();
+        QTRY_VERIFY(findVisible("todayPage"));
+        nav->navigateTo("programs-page");
+        QTRY_VERIFY(findVisible("programsPage"));
+        QTRY_COMPARE(countVisible("routineRow"), 2);
+    }
+
+    // ---- Programs ----
+
+    void theListMarksTheActiveProgramAndOpensIt()
+    {
+        startOnPrograms();
+        QCOMPARE(countVisible("programRow"), 2);
+        QCOMPARE(countVisible("programRowActive"), 1);
+        QCOMPARE(find("programTitleField")->property("text").toString(), QStringLiteral("Upper/Lower"));
+        QVERIFY(!findVisible("programActivate"));
+    }
+
+    void creatingAProgramOpensIt()
+    {
+        startOnPrograms();
+        server->methodResponses["POST " + path("/programs")] = programJson(7);
+        click(find("newProgramField"));
+        type("Summer");
+        click(find("newProgramButton"));
+        QTRY_COMPARE(lastBodyTo("POST", "/programs"), QJsonObject({{"title", "Summer"}}));
+        QTRY_COMPARE(programs->currentId(), 7);
+    }
+
+    void aBlankNameIsCaughtBeforeSending()
+    {
+        startOnPrograms();
+        click(find("newProgramButton"));
+        QTRY_VERIFY(findVisible("programsError"));
+        QVERIFY(requestsTo("POST", "/programs").isEmpty());
+    }
+
+    void renamingOnEnter()
+    {
+        startOnPrograms();
+        server->methodResponses["PUT " + path("/programs/5")] = programJson();
+        click(find("programTitleField"));
+        QTest::keyClick(window(), Qt::Key_A, Qt::ControlModifier);
+        type("UL");
+        QTest::keyClick(window(), Qt::Key_Return);
+        QTRY_COMPARE(lastBodyTo("PUT", "/programs/5"), QJsonObject({{"title", "UL"}}));
+    }
+
+    void aDayChipSendsTheWholeSet()
+    {
+        startOnPrograms();
+        server->methodResponses["PUT " + path("/programs/5/days")] = programJson();
+        click(find("day-2"));
+        QTRY_COMPARE(lastBodyTo("PUT", "/programs/5/days").value("days").toArray(), QJsonArray({0, 1, 2, 3, 4}));
+    }
+
+    void addingARoutine()
+    {
+        startOnPrograms();
+        server->methodResponses["POST " + path("/routines")] = programJson();
+        click(find("newRoutineField"));
+        type("Arms");
+        click(find("newRoutineButton"));
+        QTRY_COMPARE(lastBodyTo("POST", "/routines"), QJsonObject({{"programId", 5}, {"title", "Arms"}}));
+    }
+
+    void deletingAProgramAsksFirst()
+    {
+        startOnPrograms();
+        server->methodResponses["DELETE " + path("/programs/5")] = R"({"status":"ok","data":[]})";
+        click(find("programDelete"));
+        QTRY_VERIFY(findVisible("confirmDialog"));
+        click(find("confirmNo"));
+        QTRY_VERIFY(!findVisible("confirmDialog"));
+        QVERIFY(requestsTo("DELETE", "/programs/5").isEmpty());
+        click(find("programDelete"));
+        QTRY_VERIFY(findVisible("confirmYes"));
+        click(find("confirmYes"));
+        QTRY_COMPARE(requestsTo("DELETE", "/programs/5").size(), 1);
+        QTRY_COMPARE(programs->currentId(), 0);
+    }
+
+    void followingAndDuplicatingAnotherProgram()
+    {
+        startOnPrograms();
+        QByteArray mine = programJson(6);
+        mine.replace(R"("active":true)", R"("active":false)");
+        server->responses[path("/programs/6")] = mine;
+        server->methodResponses["POST " + path("/programs/6/activate")] = twoPrograms();
+        server->methodResponses["POST " + path("/programs/6/duplicate")] = programJson(8);
+        programs->open(6);
+        QTRY_VERIFY(findVisible("programActivate"));
+        click(find("programActivate"));
+        QTRY_COMPARE(requestsTo("POST", "/programs/6/activate").size(), 1);
+        click(find("programDuplicate"));
+        QTRY_COMPARE(requestsTo("POST", "/programs/6/duplicate").size(), 1);
+    }
+
+    void altDownMovesARoutine()
+    {
+        startOnPrograms();
+        server->methodResponses["POST " + path("/routines/reorder")] = programJson();
+        click(find("routineTitle"));
+        QTest::keyClick(window(), Qt::Key_Down, Qt::AltModifier);
+        QTRY_COMPARE(lastBodyTo("POST", "/routines/reorder"),
+                     QJsonObject({{"programId", 5}, {"order", QJsonArray{51, 50}}}));
+    }
+
+    void draggingTheGripMovesARoutine()
+    {
+        startOnPrograms();
+        server->methodResponses["POST " + path("/routines/reorder")] = programJson();
+        QQuickItem *grip = find("routineGrip");
+        QVERIFY(grip);
+        QQuickItem *row = find("routineRow");
+        const QPoint from = grip->mapToScene(QPointF(grip->width() / 2, grip->height() / 2)).toPoint();
+        const QPoint to = from + QPoint(0, int(row->height() * 1.5));
+        QTest::mousePress(window(), Qt::LeftButton, Qt::NoModifier, from);
+        for (int step = 1; step <= 10; ++step)
+            QTest::mouseMove(window(), from + (to - from) * step / 10, 20);
+        QTest::mouseRelease(window(), Qt::LeftButton, Qt::NoModifier, to);
+        QTRY_COMPARE(lastBodyTo("POST", "/routines/reorder").value("order").toArray(), QJsonArray({51, 50}));
+    }
+
+    void editOpensTheRoutineEditor()
+    {
+        startOnPrograms();
+        click(find("routineEdit"));
+        QTRY_COMPARE(nav->currentPage(), QStringLiteral("routine-page"));
+        QCOMPARE(programs->currentRoutineId(), 50);
+    }
+
+    void aProgramGoneElsewhereClosesAndSaysSo()
+    {
+        startOnPrograms();
+        server->methodStatuses["PUT " + path("/programs/5")] = 404;
+        server->methodResponses["PUT " + path("/programs/5")] = R"({"status":"error","message":"not found"})";
+        click(find("programTitleField"));
+        QTest::keyClick(window(), Qt::Key_A, Qt::ControlModifier);
+        type("UL");
+        QTest::keyClick(window(), Qt::Key_Return);
+        QTRY_VERIFY(findVisible("programsNotice"));
+        QVERIFY(!findVisible("programTitleField"));
+    }
+
     // ---- The shell and Settings ----
 
     void theRailHasTodayProgramsCatalogAndSettings()

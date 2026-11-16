@@ -280,3 +280,28 @@ export const startEmptyProgram = "Start an empty program"
 export const pickProgram = "None of your programs is the one you're following. Pick one."
 export const openPrograms = "Open Programs"
 export function noRoutinesYet(title) { return `${title} has no routines yet.` }
+
+// ---- Programs ----
+export const programsTitle = "Programs"
+export const activeBadge = "Active"
+export const newProgram = "New program"
+export const programName = "Name a program"
+export const programsEmpty = "No programs yet. Name one to begin, or take the introduction from Settings."
+export const followThis = "Follow this one"
+export const duplicate = "Duplicate"
+export const deleteWord = "Delete"
+export const keepIt = "Keep it"
+export const plannedDays = "Planned days"
+export const plannedDaysHint = "Next up follows the rotation whatever the day; these just say when you mean to train."
+export const routinesTitle = "Routines, in rotation"
+export const addRoutine = "Add routine"
+export const routineName = "Name a routine"
+export const edit = "Edit"
+export const noRoutines = "No routines yet. Add the first below."
+export const goneElsewhere = "That was changed or removed on another device, so it's been closed here."
+export function routineCount(n) { return n === 1 ? "1 routine" : `${n} routines` }
+export function exerciseCount(n) { return n === 1 ? "1 exercise" : `${n} exercises` }
+export function deleteProgramQuestion(title) {
+    return `Delete ${title}? Its routines go with it. Workouts you've logged keep everything.`
+}
+export function deleteRoutineQuestion(title) { return `Delete ${title}? Workouts you've logged keep everything.` }
