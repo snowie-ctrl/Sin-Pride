@@ -53,6 +53,7 @@ const failures = {
     bad_reply: "Pride sent a catalog this app can't read. Try again later.",
     not_found: "That's gone: it was changed or removed somewhere else.",
     unavailable: "None of that starter's exercises are in the catalog yet.",
+    closed: "That suggestion was already settled, maybe on another device.",
 }
 
 // Why a save or a load failed, by the code a service reports; a code nobody taught the app reads as a server problem.
@@ -231,6 +232,17 @@ const fieldProblems = {
     days: "Pick days of the week",
     exerciseId: "That exercise isn't available any more",
     order: "Something changed meanwhile. Try again.",
+    performedOn: "The date can't be after today",
+    exercises: "Add at least one exercise (30 at most)",
+    weight: "A weight is 0 to 2,000, with its unit",
+    weightUnit: "Pick lb or kg for the weight",
+    reps: "Reps are 1 to 1,000",
+    seconds: "A time is 1 second to 10 hours, like 45 or 1:30",
+    distance: "Give a distance above 0 and up to 1,000, a time, or both",
+    clientId: "This workout's label got muddled. Try again.",
+    itemId: "That exercise is in this workout twice",
+    routineId: "That routine isn't available any more",
+    kind: "A steady stretch is noted, not taken",
 }
 export function fieldProblem(field) { return fieldProblems[field] || "That doesn't look right" }
 
@@ -351,3 +363,111 @@ export function addedTo(title) { return `Added to ${title}.` }
 export function deleteOwnQuestion(name) {
     return `Delete ${name}? It comes out of any routine it's in. Workouts that logged it keep it.`
 }
+
+// ---- Logging and progress (milestone 3) ----
+// Mind the banned words: "latest" holds "late", so the crowns row is "Recent crowns".
+
+const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+// "Tue 17 Nov"
+export function longDay(iso) {
+    const n = dayNumber(iso)
+    const d = new Date(n * 86400000)
+    return `${weekdaysShort[(d.getUTCDay() + 6) % 7]} ${d.getUTCDate()} ${months[d.getUTCMonth()]}`
+}
+
+// The Log page's date: "Today · Tue 17 Nov", "Yesterday · Mon 16 Nov", or the day.
+export function logDay(dateIso, todayIso) {
+    const ahead = dayNumber(dateIso) - dayNumber(todayIso)
+    if (ahead === 0)
+        return `Today · ${longDay(dateIso)}`
+    if (ahead === -1)
+        return `Yesterday · ${longDay(dateIso)}`
+    return longDay(dateIso)
+}
+
+export const logTitle = "Log a workout"
+export const editWorkoutTitle = "Edit a workout"
+export const logHint = "Filled from your targets and last time. Change what differed."
+export const dateLabel = "Date"
+export const routineLabel = "Routine"
+export const freeWorkout = "Free workout"
+export function nextUpRoutine(title) { return `Next up: ${title}` }
+export function routineOption(title, program) { return `${title} · ${program}` }
+export const routineStays = "The routine stays as logged."
+export const warmup = "Warm-up"
+export const warmupShort = "warm-up"
+export const doneWord = "Done"
+export const saveWorkout = "Save workout"
+export const deleteWorkout = "Delete workout"
+export function deleteWorkoutQuestion(day) {
+    return `Delete the workout of ${day}? Its sets go with it, and any crowns it earned.`
+}
+export function logSummary(sets, exercises) {
+    return `${sets === 1 ? "1 set" : sets + " sets"} · ${exercises === 1 ? "1 exercise" : exercises + " exercises"}`
+}
+export const logEmpty = "A free workout. Add the exercises you did."
+export const logLoading = "Laying out your sets…"
+export const logUnavailable = "That routine's sets can't be loaded right now."
+export const workoutNote = "A note on this workout (optional)"
+export function suggestedNext(p) { return `Suggested next: ${p}` }
+export const removeExercise = "Remove this exercise"
+
+// The result card (spec §6; plan decision 24).
+export const resultLogged = "Logged"
+export const resultCrowned = "New crown"
+export function loggedSummary(title, sets, exercises) {
+    return `${title || "Your workout"} is logged. ${logSummary(sets, exercises).replace(" · ", ", ")}.`
+}
+export function crownLine(name, record) { return `New crown: ${name} ${record}` }
+export function stepUpLine(name, p) { return `${name}: try ${p} next time` }
+export function stallLine(name) { return `${name}: holding steady` }
+
+// Today (spec §6, §7).
+export const logThisWorkout = "Log this workout"
+export function lastTime(line) { return `Last time ${line}` }
+export function suggestionChip(lastShort, p) { return lastShort ? `${lastShort} last time: try ${p}` : `Try ${p}` }
+export const takeIt = "Take it"
+export const notYet = "Not yet"
+export const holdingSteady = "Holding steady:"
+export const stallTip = "try a lighter week, or swap the exercise"
+export const noted = "Noted"
+export function earnedIt(name, p) { return `Earned it: ${name} goes to ${p}.` }
+export const recentCrowns = "Recent crowns"
+export function crownWhen(dateIso, todayIso) {
+    return dayNumber(dateIso) === dayNumber(todayIso) ? "New crown · today"
+                                                       : `New crown · ${weekdaysShort[(new Date(dayNumber(dateIso) * 86400000).getUTCDay() + 6) % 7]}`
+}
+
+// Progress (spec §6).
+export const navProgress = "Progress"
+export const progressTitle = "Progress"
+export const progressEmpty = "Nothing logged yet. Your first workout starts the story."
+export const progressUnavailable = "Progress can't be loaded right now."
+export const logAWorkout = "Log a workout"
+export const viewBest = "Best set"
+export const viewEstimate = "Estimated 1-rep max"
+export const viewVolume = "Volume"
+export const recordsTitle = "Records"
+export const perWeekTitle = "Workouts per week"
+export const historyTitle = "History"
+export const estimatedShort = "est. 1RM"
+export function workoutTitle(title) { return title || "Free workout" }
+export function historyCounts(exercises, sets) { return logSummary(sets, exercises) }
+const recordLabels = { heaviest: "Heaviest", e1rm: "Best estimated 1-rep max", reps: "Most reps", time: "Longest",
+                       distance: "Farthest", pace: "Fastest pace" }
+export function recordLabel(kind) { return recordLabels[kind] || kind }
+export function chartUnit(view, measure, units) {
+    if (view === "volume" || view === "estimate" || measure === "weight_reps")
+        return units
+    if (measure === "reps")
+        return "reps"
+    if (measure === "time")
+        return "seconds"
+    return units === "lb" ? "mi" : "km"
+}
+
+// The Exercise page (spec §6: the person's history and records for it).
+export const yourRecords = "Your records"
+export const yourRecent = "Your last workouts with it"
+export const noHistoryYet = "Not logged yet. Its records start with the first workout."

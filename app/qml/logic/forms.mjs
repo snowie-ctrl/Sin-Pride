@@ -19,7 +19,7 @@ export function signInProblem(username, password) {
 }
 
 export const LIMITS = { title: 60, note: 1000, name: 120, steps: 50, step: 1000, sets: 20, reps: 100, weight: 2000,
-                        seconds: 36000, distance: 1000, rest: 3600, increment: 100 }
+                        seconds: 36000, distance: 1000, rest: 3600, increment: 100, setReps: 1000, workoutExercises: 30 }
 
 // A number as people type it: digits with one point, or a comma for the point. NaN for anything else (no signs).
 export function parseNumber(text) {
@@ -129,4 +129,77 @@ export function ownExerciseProblem(e) {
     if (steps.length > LIMITS.steps || steps.some(s => !String(s).trim().length || String(s).length > LIMITS.step))
         return problem("steps")
     return fine
+}
+
+const setMeasureFields = {
+    weight_reps: ["weight", "weightUnit", "reps"],
+    reps: ["weight", "weightUnit", "reps"],
+    time: ["seconds"],
+    distance_time: ["distance", "distanceUnit", "seconds"],
+}
+const setFields = ["weight", "weightUnit", "reps", "seconds", "distance", "distanceUnit"]
+
+// server/prideChecks.py workoutSet, field for field, in the same order.
+export function setProblem(measure, s) {
+    const own = setMeasureFields[measure]
+    if (!own)
+        return problem("measure")
+    for (const key of setFields)
+        if (own.indexOf(key) < 0 && given(s[key]))
+            return problem(key)
+    if (given(s.warmup) && typeof s.warmup !== "boolean")
+        return problem("warmup")
+    if (own.indexOf("weight") >= 0) {
+        if (!given(s.weight) && measure === "weight_reps" && !given(s.weightUnit))
+            return problem("weight")
+        if (given(s.weight) && !(typeof s.weight === "number" && s.weight >= 0 && s.weight <= LIMITS.weight))
+            return problem("weight")
+        if (given(s.weightUnit) && ["lb", "kg"].indexOf(s.weightUnit) < 0)
+            return problem("weightUnit")
+        if (given(s.weight) && !given(s.weightUnit))
+            return problem("weightUnit")
+        if (given(s.weightUnit) && !given(s.weight))
+            return problem("weight")
+    }
+    if (own.indexOf("reps") >= 0 && !whole(s.reps, 1, LIMITS.setReps))
+        return problem("reps")
+    if (measure === "time" && !whole(s.seconds, 1, LIMITS.seconds))
+        return problem("seconds")
+    if (measure === "distance_time") {
+        if (!given(s.distance) && !given(s.distanceUnit) && !given(s.seconds))
+            return problem("distance")
+        if (given(s.distance) && !(typeof s.distance === "number" && s.distance > 0 && s.distance <= LIMITS.distance))
+            return problem("distance")
+        if (given(s.distanceUnit) && ["km", "mi", "m"].indexOf(s.distanceUnit) < 0)
+            return problem("distanceUnit")
+        if (given(s.distance) && !given(s.distanceUnit))
+            return problem("distanceUnit")
+        if (given(s.distanceUnit) && !given(s.distance))
+            return problem("distance")
+        if (given(s.seconds) && !whole(s.seconds, 1, LIMITS.seconds))
+            return problem("seconds")
+    }
+    return fine
+}
+
+// server/prideChecks.py workout, for what the Log page can get wrong: the date (latestIso is the page's today), the
+// note, the exercises and each set. `card` and `set` say where (-1 when it is not one card's or one set's).
+export function workoutProblem(performedOn, latestIso, note, cards) {
+    const at = (found, card, set) => ({ field: found.field, words: found.words, card: card, set: set })
+    if (String(performedOn) > String(latestIso))
+        return at(problem("performedOn"), -1, -1)
+    if (noteProblem(note))
+        return at(problem("note"), -1, -1)
+    if (!cards.length || cards.length > LIMITS.workoutExercises)
+        return at(problem("exercises"), -1, -1)
+    for (let c = 0; c < cards.length; ++c) {
+        if (!cards[c].sets.length || cards[c].sets.length > LIMITS.sets)
+            return at(problem("sets"), c, -1)
+        for (let s = 0; s < cards[c].sets.length; ++s) {
+            const found = setProblem(cards[c].measure, cards[c].sets[s])
+            if (found.field)
+                return at(found, c, s)
+        }
+    }
+    return { field: "", words: "", card: -1, set: -1 }
 }

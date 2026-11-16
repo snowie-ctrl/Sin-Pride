@@ -88,6 +88,8 @@ qt_add_qml_module(pride_ui
         qml/logic/words.mjs
         qml/logic/forms.mjs
         qml/logic/units.mjs
+        qml/logic/logbook.mjs
+        qml/logic/charts.mjs
 )
 target_link_libraries(pride_ui PRIVATE Qt6::Quick Qt6::QuickControls2)
 

@@ -93,4 +93,35 @@ TestCase {
         compare(Forms.ownExerciseProblem(Object.assign({}, fine, { measure: "" })).field, "measure")
         compare(Forms.ownExerciseProblem(Object.assign({}, fine, { steps: ["x".repeat(1001)] })).field, "steps")
     }
+
+    function test_aSetIsCheckedAsTheServerChecksIt() {
+        compare(Forms.setProblem("weight_reps", { warmup: false, weight: 135, weightUnit: "lb", reps: 12 }).field, "")
+        compare(Forms.setProblem("weight_reps", { reps: 8 }).field, "weight")
+        compare(Forms.setProblem("weight_reps", { weight: 100, reps: 8 }).field, "weightUnit")
+        compare(Forms.setProblem("weight_reps", { weight: 2001, weightUnit: "lb", reps: 8 }).field, "weight")
+        compare(Forms.setProblem("weight_reps", { weight: NaN, weightUnit: "lb", reps: 8 }).field, "weight")
+        compare(Forms.setProblem("weight_reps", { weight: 100, weightUnit: "lb", reps: 0 }).field, "reps")
+        compare(Forms.setProblem("weight_reps", { weight: 100, weightUnit: "lb", reps: 8, seconds: 30 }).field, "seconds")
+        compare(Forms.setProblem("reps", { reps: 12 }).field, "")
+        compare(Forms.setProblem("time", {}).field, "seconds")
+        compare(Forms.setProblem("time", { seconds: 30, reps: 5 }).field, "reps")
+        compare(Forms.setProblem("distance_time", {}).field, "distance")
+        compare(Forms.setProblem("distance_time", { distance: 5 }).field, "distanceUnit")
+        compare(Forms.setProblem("distance_time", { seconds: 1500 }).field, "")
+        verify(Forms.setProblem("weight_reps", { reps: 8 }).words.length > 0)
+    }
+
+    function test_aWorkoutNamesItsFirstProblemAndWhere() {
+        const good = { measure: "weight_reps", sets: [{ warmup: false, weight: 135, weightUnit: "lb", reps: 12 }] }
+        const bad = { measure: "weight_reps", sets: [good.sets[0], { warmup: false, weight: null, weightUnit: "lb", reps: 12 }] }
+        compare(Forms.workoutProblem("2026-11-17", "2026-11-17", "", [good]).field, "")
+        compare(Forms.workoutProblem("2026-11-18", "2026-11-17", "", [good]).field, "performedOn")
+        compare(Forms.workoutProblem("2026-11-17", "2026-11-17", "", []).field, "exercises")
+        compare(Forms.workoutProblem("2026-11-17", "2026-11-17", "x".repeat(1001), [good]).field, "note")
+        compare(Forms.workoutProblem("2026-11-17", "2026-11-17", "", [{ measure: "reps", sets: [] }]).field, "sets")
+        const found = Forms.workoutProblem("2026-11-17", "2026-11-17", "", [good, bad])
+        compare(found.field, "weight")
+        compare(found.card, 1)
+        compare(found.set, 1)
+    }
 }

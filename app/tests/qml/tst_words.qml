@@ -98,4 +98,26 @@ TestCase {
                              "daysPerWeek", "days", "exerciseId", "order", "made-up"])
             verify(Words.fieldProblem(field).length > 0, field)
     }
+
+    function test_loggingWords() {
+        compare(Words.logDay("2026-11-17", "2026-11-17"), "Today · Tue 17 Nov")
+        compare(Words.logDay("2026-11-16", "2026-11-17"), "Yesterday · Mon 16 Nov")
+        compare(Words.logDay("2026-11-02", "2026-11-17"), "Mon 2 Nov")
+        compare(Words.longDay("2026-11-17"), "Tue 17 Nov")
+        compare(Words.logSummary(10, 3), "10 sets · 3 exercises")
+        compare(Words.logSummary(1, 1), "1 set · 1 exercise")
+        compare(Words.suggestionChip("3×12", "140 lb"), "3×12 last time: try 140 lb")
+        compare(Words.suggestionChip("", "140 lb"), "Try 140 lb")
+        compare(Words.workoutTitle(null), "Free workout")
+        compare(Words.workoutTitle("Upper"), "Upper")
+        compare(Words.crownWhen("2026-11-16", "2026-11-17"), "New crown · Mon")
+        compare(Words.crownWhen("2026-11-17", "2026-11-17"), "New crown · today")
+        for (const kind of ["heaviest", "e1rm", "reps", "time", "distance", "pace"])
+            verify(Words.recordLabel(kind).length > 0, kind)
+        for (const field of ["performedOn", "exercises", "weight", "weightUnit", "reps", "seconds", "distance",
+                             "clientId", "itemId", "routineId", "kind"])
+            verify(Words.fieldProblem(field) !== Words.fieldProblem("made-up"), field)
+        verify(Words.failure("closed").length > 0)
+        compare(Words.earnedIt("Barbell Row", "140 lb"), "Earned it: Barbell Row goes to 140 lb.")
+    }
 }
