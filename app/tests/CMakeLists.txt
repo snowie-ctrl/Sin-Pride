@@ -57,3 +57,7 @@ pride_test(tst_pages
             ../services/Catalog.h ../services/Catalog.cpp
             ../services/Wiring.h ../services/Wiring.cpp
     LIBS Qt6::Network Qt6::Gui Qt6::Quick Qt6::QuickControls2 pride_uiplugin)
+
+pride_test(tst_profile
+    SOURCES tst_profile.cpp FakeServer.h ${PRIDE_API} ../services/Profile.h ../services/Profile.cpp
+    LIBS Qt6::Network)

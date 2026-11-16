@@ -35,6 +35,8 @@ qt_add_executable(appPride
     services/ExerciseStore.cpp
     services/Catalog.h
     services/Catalog.cpp
+    services/Profile.h
+    services/Profile.cpp
     services/Wiring.h
     services/Wiring.cpp
 )
