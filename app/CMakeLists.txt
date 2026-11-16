@@ -83,6 +83,8 @@ qt_add_qml_module(pride_ui
         qml/component/WeekStrip.qml
         qml/component/DayChips.qml
         qml/component/ConfirmDialog.qml
+        qml/component/OwnExerciseForm.qml
+        qml/component/AddToRoutine.qml
         qml/logic/words.mjs
         qml/logic/forms.mjs
         qml/logic/units.mjs

@@ -3,8 +3,8 @@ import QtQuick.Controls
 import "../logic/words.mjs" as Words
 
 // One exercise (spec §6): its pictures, the muscles it works, its equipment and steps, and the credit its source asks
-// for. The person's history and records, and "Add to a routine…", join in milestones 2 and 3. An exercise that has
-// left the catalog still opens (history names it) and says so.
+// for. Own exercises are edited and deleted here, and "Add to a routine…" starts here; the person's history and
+// records join in milestone 3. An exercise that has left the catalog still opens (history names it) and says so.
 Rectangle {
     id: root
     objectName: "exercisePage"
@@ -18,6 +18,35 @@ Rectangle {
     readonly property var pictures: root.found ? (root.exercise.pictures || []) : []
     property int pictureIndex: 0
     onExerciseChanged: root.pictureIndex = 0
+
+    readonly property bool own: root.found && root.exercise.source === "own" && root.exercise.removed !== true
+    readonly property bool shown: root.found && root.exercise.removed !== true
+    // Set while this page's Delete is waiting on the service, so another page's removal doesn't move this one.
+    property bool deleting: false
+
+    OwnExerciseForm { id: ownForm }
+    AddToRoutine { id: addPopup }
+
+    ConfirmDialog {
+        id: confirmDelete
+        yesText: Words.deleteWord
+        text: root.found ? Words.deleteOwnQuestion(root.exercise.name) : ""
+        onAccepted: {
+            root.deleting = true
+            Catalog.removeOwn(root.exercise.id)
+        }
+    }
+
+    Connections {
+        target: Catalog
+        function onOwnRemoved() {
+            if (!root.deleting)
+                return
+            root.deleting = false
+            Nav.navigateTo("catalog-page")
+        }
+        function onOwnFailed() { root.deleting = false }
+    }
 
     ActionButton {
         id: back
@@ -109,6 +138,29 @@ Rectangle {
                 font.italic: true
             }
 
+            Row {
+                spacing: Preferences.spacingSmall
+                ActionButton {
+                    objectName: "addToRoutine"
+                    visible: root.shown
+                    text: Words.addToRoutine
+                    onClicked: addPopup.openFor(root.exercise.id)
+                }
+                ActionButton {
+                    objectName: "editOwn"
+                    visible: root.own
+                    text: Words.edit
+                    onClicked: ownForm.openFor(root.exercise)
+                }
+                ActionButton {
+                    objectName: "deleteOwn"
+                    visible: root.own
+                    danger: true
+                    text: Words.deleteWord
+                    onClicked: confirmDelete.open()
+                }
+            }
+
             Text {
                 width: parent.width
                 wrapMode: Text.Wrap
@@ -191,7 +243,8 @@ Rectangle {
                 objectName: "exerciseCredit"
                 width: parent.width
                 wrapMode: Text.Wrap
-                text: root.found ? Words.creditLine(root.exercise.source, root.exercise.licence) : ""
+                text: !root.found ? "" : (root.exercise.source === "own" ? Words.ownCredit
+                                                                   : Words.creditLine(root.exercise.source, root.exercise.licence))
                 color: Preferences.textMuted
                 font.family: Preferences.appFont
                 font.pixelSize: Preferences.fontSizeCaption

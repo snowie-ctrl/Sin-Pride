@@ -1438,6 +1438,124 @@ private slots:
         QCOMPARE(find("todayItemName")->property("text").toString(), QStringLiteral("An exercise this device doesn't know"));
         QVERIFY(findVisible("todayItemGone"));
     }
+
+    // ---- Own exercises and Add to a routine ----
+
+    // Built from plain strings: moc stumbles on a raw string that opens a brace it does not close.
+    static QByteArray sandbag(int id = 900, const char *name = "Sandbag Carry")
+    {
+        const QByteArray fields = R"("key":"own-0123456789abcdef","source":"own","licence":null,"category":null,)"
+                                  R"("level":null,"measure":"distance_time","region":"upper","removed":false,)"
+                                  R"("primary":["forearms"],"secondary":[],"equipment":["other"],"steps":["Walk."],"pictures":[])";
+        return "{\"id\":" + QByteArray::number(id) + ",\"name\":\"" + name + "\"," + fields + "}";
+    }
+
+    void addingAnOwnExerciseOpensIt()
+    {
+        server->methodResponses["POST " + path("/exercises")] = "{\"status\":\"ok\",\"data\":" + sandbag() + "}";
+        startSignedIn();
+        click(find("addOwnExercise"));
+        QTRY_VERIFY(findVisible("ownForm"));
+        click(find("ownName"));
+        type("Sandbag Carry");
+        click(find("ownMeasure-distance_time"));
+        click(find("ownPrimary-forearms"));
+        click(find("ownEquipment-other"));
+        click(find("ownSave"));
+        QTRY_COMPARE(requestsTo("POST", "/exercises").size(), 1);
+        const QJsonObject sent = lastBodyTo("POST", "/exercises");
+        QCOMPARE(sent.value("name").toString(), QStringLiteral("Sandbag Carry"));
+        QCOMPARE(sent.value("primary").toArray(), QJsonArray({"forearms"}));
+        QTRY_VERIFY(findVisible("exercisePage"));
+        QCOMPARE(find("exerciseName")->property("text").toString(), QStringLiteral("Sandbag Carry"));
+    }
+
+    void ownExerciseFormKeepsItsFieldsWhenRefused()
+    {
+        server->methodStatuses["POST " + path("/exercises")] = 503;
+        server->methodResponses["POST " + path("/exercises")] = R"({"status":"error","message":"down"})";
+        startSignedIn();
+        click(find("addOwnExercise"));
+        QTRY_VERIFY(findVisible("ownForm"));
+        click(find("ownSave"));                       // nothing filled in: caught before sending
+        QTRY_VERIFY(findVisible("ownError"));
+        QCOMPARE(find("ownError")->property("text").toString(), QStringLiteral("A name is 1 to 120 characters"));
+        QVERIFY(requestsTo("POST", "/exercises").isEmpty());
+        click(find("ownName"));
+        type("Sandbag Carry");
+        click(find("ownMeasure-distance_time"));
+        click(find("ownPrimary-forearms"));
+        click(find("ownEquipment-other"));
+        click(find("ownSave"));
+        QTRY_COMPARE(find("ownError")->property("text").toString(), QStringLiteral("Pride couldn't do that just now. Try again."));
+        QVERIFY(findVisible("ownForm"));
+        QCOMPARE(find("ownName")->property("text").toString(), QStringLiteral("Sandbag Carry"));
+    }
+
+    void mineNarrowsToOwnExercises()
+    {
+        server->responses[path("/exercises")] = "{\"status\":\"ok\",\"data\":[" + sandbag() + "]}";
+        startSignedIn();
+        QTRY_VERIFY(findVisible("chip-mine-mine"));
+        QTRY_COMPARE(countVisible("exerciseTile"), 4);
+        click(find("chip-mine-mine"));
+        QTRY_COMPARE(countVisible("exerciseTile"), 1);
+    }
+
+    void editingAndDeletingAnOwnExercise()
+    {
+        server->responses[path("/exercises")] = "{\"status\":\"ok\",\"data\":[" + sandbag() + "]}";
+        server->methodResponses["PUT " + path("/exercises/900")] = "{\"status\":\"ok\",\"data\":" + sandbag(900, "Sandbag Walk") + "}";
+        server->methodResponses["DELETE " + path("/exercises/900")] = R"({"status":"ok","data":{"routinesTouched":1,"hidden":false}})";
+        startSignedIn();
+        QTRY_COMPARE(catalog->own().size(), 1);
+        catalog->open(900);
+        nav->navigateTo("exercise-page");
+        QTRY_VERIFY(findVisible("editOwn"));
+        QVERIFY(find("exerciseCredit")->property("text").toString().contains(QStringLiteral("your own")));
+        click(find("editOwn"));
+        QTRY_VERIFY(findVisible("ownForm"));
+        QCOMPARE(find("ownName")->property("text").toString(), QStringLiteral("Sandbag Carry"));
+        click(find("ownName"));
+        QTest::keyClick(window(), Qt::Key_A, Qt::ControlModifier);
+        type("Sandbag Walk");
+        click(find("ownSave"));
+        QTRY_COMPARE(lastBodyTo("PUT", "/exercises/900").value("name").toString(), QStringLiteral("Sandbag Walk"));
+        QTRY_VERIFY(!findVisible("ownForm"));
+        click(find("deleteOwn"));
+        QTRY_VERIFY(findVisible("confirmYes"));
+        click(find("confirmYes"));
+        QTRY_COMPARE(requestsTo("DELETE", "/exercises/900").size(), 1);
+        QTRY_VERIFY(findVisible("catalogPage"));
+    }
+
+    void addingToARoutineFromTheExercisePage()
+    {
+        server->responses[path("/programs")] = twoPrograms();
+        server->responses[path("/programs/5")] = programJson();
+        server->methodResponses["POST " + path("/routine-items")] = programJson();
+        startSignedIn();
+        catalog->open(7);
+        nav->navigateTo("exercise-page");
+        QTRY_VERIFY(findVisible("addToRoutine"));
+        click(find("addToRoutine"));
+        QTRY_VERIFY(findVisible("addToRoutinePopup"));
+        QTRY_COMPARE(countVisible("addProgramRow"), 2);
+        click(find("addProgramRow"));                  // the active one is listed first
+        QTRY_COMPARE(countVisible("addRoutineRow"), 2);
+        click(find("addRoutineRow"));
+        QTRY_COMPARE(lastBodyTo("POST", "/routine-items"), QJsonObject({{"routineId", 50}, {"exerciseId", 7}}));
+        QTRY_VERIFY(findVisible("addToRoutineDone"));
+    }
+
+    void aRemovedExerciseCannotBeAddedToARoutine()
+    {
+        startSignedIn();
+        catalog->open(9);
+        nav->navigateTo("exercise-page");
+        QTRY_VERIFY(findVisible("exerciseGone"));
+        QVERIFY(!findVisible("addToRoutine"));
+    }
 };
 
 QTEST_MAIN(TestPages)

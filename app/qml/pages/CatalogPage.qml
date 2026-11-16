@@ -18,6 +18,15 @@ Rectangle {
     // The catalog's first answer is still to come.
     readonly property bool gathering: ExerciseStore.loading || (!ExerciseStore.settled && !root.away)
 
+    // A new exercise opens on its own page.
+    OwnExerciseForm {
+        id: ownForm
+        onCreated: id => {
+            Catalog.open(id)
+            Nav.navigateTo("exercise-page")
+        }
+    }
+
     FilterPanel {
         id: panel
         anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
@@ -63,6 +72,15 @@ Rectangle {
             placeholderText: Words.catalogFilter
             text: Catalog.text
             onTextEdited: Catalog.setText(text)
+        }
+
+        ActionButton {
+            objectName: "addOwnExercise"
+            anchors { right: filterField.visible ? filterField.left : parent.right
+                      rightMargin: filterField.visible ? Preferences.spacingMedium : 0
+                      verticalCenter: title.verticalCenter }
+            text: Words.addOwnExercise
+            onClicked: ownForm.openNew()
         }
 
         // Reset (or a grab's start text) changes the catalog's text from outside the field.

@@ -118,7 +118,7 @@ export const noSteps = "No steps written down for this one yet."
 export const exerciseGone = "This exercise has left the catalog. Workouts that logged it keep it."
 export const exerciseMissing = "That exercise isn't in the catalog."
 
-export const facetTitles = { muscle: "Muscle", equipment: "Equipment", measure: "Measured by", level: "Level" }
+export const facetTitles = { muscle: "Muscle", equipment: "Equipment", measure: "Measured by", level: "Level", mine: "Mine" }
 
 const measures = { weight_reps: "Weight × reps", reps: "Reps", time: "Time", distance_time: "Distance and time" }
 const levels = { beginner: "Beginner", intermediate: "Intermediate", expert: "Expert" }
@@ -133,6 +133,8 @@ export function valueLabel(facet, value) {
         return levels[value] || value
     if (facet === "region")
         return regions[value] || value
+    if (facet === "mine")
+        return "Only mine"
     const text = String(value || "")
     return text.length ? text[0].toUpperCase() + text.slice(1) : text
 }
@@ -324,3 +326,24 @@ export const showEverything = "Show everything"
 export const pickerNothing = "Nothing that fits your equipment. Show everything?"
 export const routineMissing = "That routine isn't open any more."
 export const backToPrograms = "Back to Programs"
+
+// ---- Own exercises and Add to a routine ----
+export const addOwnExercise = "Add my own exercise"
+export const ownFormTitle = "Your own exercise"
+export const ownEditTitle = "Edit your exercise"
+export const ownName = "Name"
+export const ownMeasure = "Measured by"
+export const ownPrimary = "Works"
+export const ownSecondary = "Also works"
+export const ownEquipment = "Equipment"
+export const ownSteps = "How it's done (one step a line, optional)"
+export const save = "Save"
+export const cancel = "Cancel"
+export const ownCredit = "One of your own."
+export const addToRoutine = "Add to a routine…"
+export const addToRoutineTitle = "Add to which routine?"
+export const noProgramsForAdd = "No programs yet. Make one in Programs first."
+export function addedTo(title) { return `Added to ${title}.` }
+export function deleteOwnQuestion(name) {
+    return `Delete ${name}? It comes out of any routine it's in. Workouts that logged it keep it.`
+}

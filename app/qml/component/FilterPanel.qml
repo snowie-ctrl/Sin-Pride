@@ -49,7 +49,7 @@ Rectangle {
             }
 
             Repeater {
-                model: ["muscle", "equipment", "measure", "level"]
+                model: ["muscle", "equipment", "measure", "level", "mine"]
 
                 delegate: Column {
                     id: section
