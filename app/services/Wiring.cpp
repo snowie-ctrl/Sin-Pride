@@ -40,6 +40,15 @@ void wireServices(Session &session, AccountStore &store, ExerciseStore &exercise
             catalog.loadOwn();
     });
 
+    // An own exercise taken out of routines changes the open program and what Today shows; nothing else is asked.
+    QObject::connect(&catalog, &Catalog::ownRemoved, &programs, [&programs](int, int touched, bool) {
+        if (touched <= 0)
+            return;
+        if (programs.currentId())
+            programs.open(programs.currentId());
+        programs.loadToday();
+    });
+
     QObject::connect(&profile, &Profile::saved, &programs, [&programs]() { programs.loadToday(); });
 
     QObject::connect(&session, &Session::signedOut, &catalog, [&catalog, &profile, &programs]() {

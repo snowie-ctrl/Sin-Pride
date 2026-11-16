@@ -183,6 +183,7 @@ private slots:
         QTRY_COMPARE(programs->currentId(), 5);
         server->methodStatuses["PUT " + p("/programs/5")] = 404;
         server->methodResponses["PUT " + p("/programs/5")] = R"({"status":"error","message":"not found"})";
+        server->statuses[p("/programs/5")] = 404;   // the program itself is gone too, so the re-fetch confirms it
         QSignalSpy gone(programs.get(), &Programs::gone);
         QSignalSpy failed(programs.get(), &Programs::failed);
         const int listsBefore = count("GET", p("/programs"));
@@ -201,6 +202,7 @@ private slots:
         QVERIFY(programs->goneNotice().isEmpty());
         server->methodStatuses["PUT " + p("/programs/5")] = 404;
         server->methodResponses["PUT " + p("/programs/5")] = R"({"status":"error","message":"not found"})";
+        server->statuses[p("/programs/5")] = 404;   // the program itself is gone too, so the re-fetch confirms it
         QSignalSpy changed(programs.get(), &Programs::goneNoticeChanged);
         programs->rename(5, "Anything");
         QTRY_COMPARE(programs->goneNotice(), QStringLiteral("program"));
@@ -247,6 +249,46 @@ private slots:
         programs->remove(6);
         QTRY_COMPARE(gone.size(), 1);
         QCOMPARE(programs->currentId(), 5);
+    }
+
+    void aMissingItemReopensTheProgramAndOnlyAGoneOneCloses()
+    {
+        programs->open(5);
+        QTRY_COMPARE(programs->currentId(), 5);
+        server->methodStatuses["PUT " + p("/routine-items/500")] = 404;
+        server->methodResponses["PUT " + p("/routine-items/500")] = R"({"status":"error","message":"not found"})";
+        QSignalSpy gone(programs.get(), &Programs::gone);
+        QSignalSpy failed(programs.get(), &Programs::failed);
+        const int opensBefore = count("GET", p("/programs/5"));
+        programs->updateItem(500, {{"sets", 4}});
+        // The item is gone but the program is not: it is asked for again and stays open, the write is refused.
+        QTRY_COMPARE(failed.size(), 1);
+        QCOMPARE(failed.first().at(0).toString(), QStringLiteral("item"));
+        QCOMPARE(failed.first().at(1).toString(), QStringLiteral("not_found"));
+        QCOMPARE(count("GET", p("/programs/5")), opensBefore + 1);
+        QCOMPARE(programs->currentId(), 5);
+        QCOMPARE(gone.size(), 0);
+
+        // Now the program is gone as well: the re-fetch's 404 closes it and says so.
+        server->statuses[p("/programs/5")] = 404;
+        programs->updateItem(500, {{"sets", 4}});
+        QTRY_COMPARE(gone.size(), 1);
+        QCOMPARE(gone.first().at(0).toString(), QStringLiteral("program"));
+        QCOMPARE(programs->currentId(), 0);
+        QCOMPARE(failed.size(), 1);
+    }
+
+    void twoQuickOpensAnsweredOutOfOrderEndOnTheSecond()
+    {
+        server->responses[p("/programs/6")] = R"({"status":"ok","data":{"id":6,"title":"Mine","active":false,
+            "starterKey":null,"days":[],"updatedAt":"2026-11-14T09:00:00Z","routines":[]}})";
+        server->holdNext[p("/programs/5")] = 1;
+        programs->open(5);
+        programs->open(6);
+        QTRY_COMPARE(programs->currentId(), 6);
+        server->releaseHeld();
+        QTest::qWait(300);   // the late answer for 5 arrives and is dropped
+        QCOMPARE(programs->currentId(), 6);
     }
 
     void noServerIsNetworkAndChangesNothing()

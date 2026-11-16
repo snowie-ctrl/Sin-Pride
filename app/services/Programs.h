@@ -99,6 +99,9 @@ private:
     // again. A 404 is gone(); any other refusal is failed() with its code and field.
     void write(const QString &what, const QString &method, const QString &path, const QJsonObject &body, Answer answer,
                int listId = 0);
+    // Asks for one program. `afterGone` is the `what` of a write that was answered 404: the program is then reported
+    // as failed(what, not_found) when it is still there, or as gone() when it is not.
+    void fetch(int programId, const QString &afterGone);
     void takeProgram(const QJsonObject &data);
     void noteGone(const QString &what);
     QDate dateToday() const { return m_fixedToday.isValid() ? m_fixedToday : QDate::currentDate(); }
@@ -119,4 +122,6 @@ private:
     QString m_startersError;
     QDate m_fixedToday;
     int m_generation = 0;
+    int m_openSeq = 0;
+    int m_openingId = 0;
 };

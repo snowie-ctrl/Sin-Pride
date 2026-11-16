@@ -44,12 +44,19 @@ void Programs::write(const QString &what, const QString &method, const QString &
                      Answer answer, int listId)
 {
     const int generation = m_generation;
-    auto done = [this, generation, what, answer, listId](const Api::Result &result) {
+    const int openSeq = m_openSeq;
+    auto done = [this, generation, openSeq, what, answer, listId](const Api::Result &result) {
         if (generation != m_generation)
             return;
         if (!result.ok) {
             const QString code = codeOf(result);
             if (code == QLatin1String("not_found") && what != QLatin1String("adopted")) {
+                if (answer == Answer::Program && currentId()) {
+                    // A 404 on a routine or an item may mean only that one is gone, not the whole program: ask for
+                    // the program again, and only a 404 on that closes it and says it is gone.
+                    fetch(currentId(), what);
+                    return;
+                }
                 // A list write names the program it is about; losing some other program must not close the open one.
                 const bool listWrite = answer == Answer::List;
                 if (!listWrite || listId == currentId()) {
@@ -68,8 +75,12 @@ void Programs::write(const QString &what, const QString &method, const QString &
         }
         int id = 0;
         if (answer == Answer::Program) {
-            takeProgram(result.object.value("data").toObject());
-            id = currentId();
+            const QJsonObject data = result.object.value("data").toObject();
+            // Another program was opened while this write was out: its answer is about a program that is no longer
+            // the one on screen, so it must not replace the newer one.
+            if (openSeq == m_openSeq || data.value("id").toInt() == m_openingId)
+                takeProgram(data);
+            id = data.value("id").toInt();
             loadList();
         } else {
             m_programs = result.object.value("data").toArray().toVariantList();
@@ -113,9 +124,18 @@ void Programs::loadList()
 
 void Programs::open(int programId)
 {
+    fetch(programId, QString());
+}
+
+void Programs::fetch(int programId, const QString &afterGone)
+{
     const int generation = m_generation;
-    m_api.get(QStringLiteral("/programs/%1").arg(programId), QUrlQuery(), [this, generation, programId](const Api::Result &result) {
-        if (generation != m_generation)
+    // Only the latest ask may answer: two quick opens can come back in either order, and the earlier one's late
+    // answer must not replace the later one's program.
+    const int seq = ++m_openSeq;
+    m_openingId = programId;
+    m_api.get(QStringLiteral("/programs/%1").arg(programId), QUrlQuery(), [this, generation, seq, programId, afterGone](const Api::Result &result) {
+        if (generation != m_generation || seq != m_openSeq)
             return;
         if (result.httpStatus == 404) {
             if (programId == currentId()) {
@@ -125,15 +145,23 @@ void Programs::open(int programId)
             }
             noteGone(QStringLiteral("program"));
             loadList();
+            if (!afterGone.isEmpty())
+                loadToday();
             return;
         }
         if (!result.ok) {
-            emit failed(QStringLiteral("program"), failureOf(result), QString());
+            emit failed(afterGone.isEmpty() ? QStringLiteral("program") : afterGone, failureOf(result), QString());
             return;
         }
         if (result.object.value("data").toObject().value("id").toInt() != currentId())
             m_routineId = 0;
         takeProgram(result.object.value("data").toObject());
+        if (!afterGone.isEmpty()) {
+            // The program is still there, so what the write named is what is gone; the fresh copy is already shown.
+            emit failed(afterGone, QStringLiteral("not_found"), QString());
+            loadList();
+            loadToday();
+        }
     });
 }
 
