@@ -22,7 +22,12 @@ Rectangle {
 
     function show(value) { return value === undefined ? "" : String(value) }
 
-    function saveIncrement(field, text, current) {
+    // The increment box whose value was last sent, so only its typed text is let go once the save is answered.
+    property var sentBox: null
+
+    // `box` keeps what was typed until the server has it: another save (units, equipment) changes the profile too,
+    // and must not put the old value back over an increment that was typed but not saved (spec §8).
+    function saveIncrement(field, text, current, box) {
         const problem = Forms.incrementProblem(text)
         if (problem.length) {
             root.profileProblem = problem
@@ -34,7 +39,10 @@ Rectangle {
         if (value !== current) {
             const changes = {}
             changes[field] = value
+            root.sentBox = box
             Profile.save(changes)
+        } else {
+            box.dirty = false
         }
     }
 
@@ -63,9 +71,13 @@ Rectangle {
         target: Profile
         function onFailed(code, field) {
             root.profileProblem = Words.saveProblem(code, field)
+            root.sentBox = null
             savedNote.visible = false
         }
         function onSaved() {
+            if (root.sentBox)
+                root.sentBox.dirty = false
+            root.sentBox = null
             root.profileProblem = ""
             savedNote.visible = true
             savedTimer.restart()
@@ -189,20 +201,40 @@ Rectangle {
                             spacing: 4
                             Caption { text: Words.upperIncrement }
                             InputField {
+                                id: upperBox
                                 objectName: "upperIncrementField"
                                 width: 120
-                                text: root.show(root.profile.upperIncrement)
-                                onEditingFinished: root.saveIncrement("upperIncrement", text, root.profile.upperIncrement)
+                                // True from the first keystroke until the server has the value.
+                                property bool dirty: false
+                                onTextEdited: dirty = true
+                                onEditingFinished: root.saveIncrement("upperIncrement", text, root.profile.upperIncrement, upperBox)
+                            }
+                            // A Binding, not a `text:` binding, and idle while the box holds something unsaved.
+                            Binding {
+                                target: upperBox
+                                property: "text"
+                                value: root.show(root.profile.upperIncrement)
+                                when: !upperBox.dirty
                             }
                         }
                         Column {
                             spacing: 4
                             Caption { text: Words.lowerIncrement }
                             InputField {
+                                id: lowerBox
                                 objectName: "lowerIncrementField"
                                 width: 120
-                                text: root.show(root.profile.lowerIncrement)
-                                onEditingFinished: root.saveIncrement("lowerIncrement", text, root.profile.lowerIncrement)
+                                // True from the first keystroke until the server has the value.
+                                property bool dirty: false
+                                onTextEdited: dirty = true
+                                onEditingFinished: root.saveIncrement("lowerIncrement", text, root.profile.lowerIncrement, lowerBox)
+                            }
+                            // A Binding, not a `text:` binding, and idle while the box holds something unsaved.
+                            Binding {
+                                target: lowerBox
+                                property: "text"
+                                value: root.show(root.profile.lowerIncrement)
+                                when: !lowerBox.dirty
                             }
                         }
                     }

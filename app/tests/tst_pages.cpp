@@ -647,6 +647,7 @@ private slots:
         startOnPrograms();
         server->methodStatuses["PUT " + path("/programs/5")] = 404;
         server->methodResponses["PUT " + path("/programs/5")] = R"({"status":"error","message":"not found"})";
+        server->statuses[path("/programs/5")] = 404;      // the re-fetch confirms the program is gone
         click(find("programTitleField"));
         QTest::keyClick(window(), Qt::Key_A, Qt::ControlModifier);
         type("UL");
@@ -1423,11 +1424,25 @@ private slots:
         startInTheEditor();
         server->methodStatuses["PUT " + path("/routine-items/500")] = 404;
         server->methodResponses["PUT " + path("/routine-items/500")] = R"({"status":"error","message":"not found"})";
+        server->statuses[path("/programs/5")] = 404;      // the whole program is gone, which the re-fetch confirms
         replaceText("itemSets", "4");
         QTRY_COMPARE(nav->currentPage(), QStringLiteral("programs-page"));
         QTRY_VERIFY(findVisible("programsNotice"));
         QCOMPARE(find("programsNotice")->property("text").toString(),
                  QStringLiteral("That was changed or removed on another device, so it's been closed here."));
+    }
+
+    void anItemGoneAloneLeavesTheProgramOpenAndSaysWhy()
+    {
+        startInTheEditor();
+        server->methodStatuses["PUT " + path("/routine-items/500")] = 404;
+        server->methodResponses["PUT " + path("/routine-items/500")] = R"({"status":"error","message":"not found"})";
+        const int opens = requestsTo("GET", "/programs/5").size();
+        replaceText("itemSets", "4");
+        QTRY_VERIFY(requestsTo("GET", "/programs/5").size() > opens);
+        QTRY_VERIFY(findVisible("itemError"));
+        QCOMPARE(nav->currentPage(), QStringLiteral("routine-page"));
+        QCOMPARE(programs->currentId(), 5);
     }
 
     void todayNamesAnExerciseItDoesNotKnow()
@@ -1639,6 +1654,178 @@ private slots:
         nav->navigateTo("exercise-page");
         QTRY_VERIFY(findVisible("exerciseGone"));
         QVERIFY(!findVisible("addToRoutine"));
+    }
+
+    // ---- The final review's fixes ----
+
+    // The server goes out of reach after the page is up.
+    void goOffline()
+    {
+        api->setBases(QString(), QStringLiteral("http://127.0.0.1:1/api/pride"));
+        api->setPingDelays(60000, 60000);
+    }
+
+    void anOfflineProgramRenameKeepsTheTypedTitle()
+    {
+        startOnPrograms();
+        goOffline();
+        replaceText("programTitleField", "Summer");
+        QTRY_VERIFY_WITH_TIMEOUT(findVisible("programsError"), 10000);
+        QCOMPARE(find("programsError")->property("text").toString(),
+                 QStringLiteral("Can't reach Pride right now. Nothing was lost; try again."));
+        QCOMPARE(find("programTitleField")->property("text").toString(), QStringLiteral("Summer"));
+    }
+
+    void anOfflineRoutineRenameKeepsTheTypedTitle()
+    {
+        startInTheEditor();
+        goOffline();
+        replaceText("routineNameField", "Upper A");
+        QTRY_VERIFY_WITH_TIMEOUT(findVisible("routineError"), 10000);
+        QCOMPARE(find("routineError")->property("text").toString(),
+                 QStringLiteral("Can't reach Pride right now. Nothing was lost; try again."));
+        QCOMPARE(find("routineNameField")->property("text").toString(), QStringLiteral("Upper A"));
+    }
+
+    void aTypedIncrementSurvivesAnotherFieldsSave()
+    {
+        startSignedIn();
+        nav->navigateTo("settings-page");
+        QTRY_VERIFY(findVisible("upperIncrementField"));
+        replaceText("upperIncrementField", "0.3");            // refused before sending, and left as typed
+        QTRY_VERIFY(findVisible("settingsError"));
+        server->methodResponses["PUT " + path("/profile")] = profileJson("done");
+        click(find("units-kg"));
+        QTRY_COMPARE(requestsTo("PUT", "/profile").size(), 1);
+        QTRY_COMPARE(find("upperIncrementField")->property("text").toString(), QStringLiteral("0.3"));
+        QCOMPARE(find("lowerIncrementField")->property("text").toString(), QStringLiteral("10"));
+        // A saved increment lets go again: the field follows the profile once the server has the value.
+        QByteArray answer = profileJson("done");
+        answer.replace("5.0", "7.5");
+        server->methodResponses["PUT " + path("/profile")] = answer;
+        replaceText("upperIncrementField", "7.5");
+        QTRY_COMPARE(requestsTo("PUT", "/profile").size(), 2);
+        QTRY_COMPARE(find("upperIncrementField")->property("text").toString(), QStringLiteral("7.5"));
+    }
+
+    void aProgramListThatCouldNotBeFetchedIsNotNoProgramsYet()
+    {
+        server->statuses[path("/programs")] = 503;
+        server->responses[path("/programs")] = R"({"status":"error","message":"down"})";
+        start();
+        QTRY_VERIFY(findVisible("todayPage"));
+        nav->navigateTo("programs-page");
+        QTRY_VERIFY(findVisible("programsListError"));
+        QCOMPARE(find("programsListError")->property("text").toString(), QStringLiteral("Pride couldn't do that just now. Try again."));
+        QVERIFY(!findVisible("programsEmpty"));
+        server->statuses[path("/programs")] = 200;
+        server->responses[path("/programs")] = twoPrograms();
+        server->responses[path("/programs/5")] = programJson();
+        click(find("programsListRetry"));
+        QTRY_COMPARE(countVisible("programRow"), 2);
+        QVERIFY(!findVisible("programsListError"));
+    }
+
+    void todayThatCouldNotBeFetchedOffersTryAgain()
+    {
+        server->statuses[path("/today")] = 503;
+        server->responses[path("/today")] = R"({"status":"error","message":"down"})";
+        startOnToday();
+        QTRY_VERIFY(findVisible("todayUnavailable"));
+        const int asked = requestsTo("/today").size();
+        server->statuses[path("/today")] = 200;
+        server->responses[path("/today")] = todayJson(curlItem());
+        click(find("todayRetry"));
+        QTRY_VERIFY(findVisible("nextUpCard"));
+        QCOMPARE(requestsTo("/today").size(), asked + 1);
+    }
+
+    void aVisitToTodayAfterAFailedFirstFetchAsksAgain()
+    {
+        server->statuses[path("/today")] = 503;
+        server->responses[path("/today")] = R"({"status":"error","message":"down"})";
+        startOnToday();
+        QTRY_VERIFY(findVisible("todayUnavailable"));
+        QTRY_VERIFY(!programs->todayError().isEmpty());
+        nav->navigateTo("catalog-page");
+        QTRY_VERIFY(findVisible("catalogPage"));
+        server->statuses[path("/today")] = 200;
+        server->responses[path("/today")] = todayJson(curlItem());
+        const int before = requestsTo("/today").size();
+        nav->navigateTo("today-page");
+        QTRY_VERIFY(findVisible("nextUpCard"));
+        QVERIFY(requestsTo("/today").size() > before);
+    }
+
+    void deletingAnOwnExerciseARoutineUsesReloadsTheOpenProgram()
+    {
+        server->responses[path("/exercises")] = "{\"status\":\"ok\",\"data\":[" + sandbag() + "]}";
+        server->responses[path("/programs")] = twoPrograms();
+        server->responses[path("/programs/5")] = programJson();
+        server->methodResponses["DELETE " + path("/exercises/900")] = R"({"status":"ok","data":{"routinesTouched":1,"hidden":false}})";
+        startSignedIn();
+        QTRY_COMPARE(catalog->own().size(), 1);
+        programs->open(5);
+        QTRY_COMPARE(programs->currentId(), 5);
+        catalog->open(900);
+        nav->navigateTo("exercise-page");
+        QTRY_VERIFY(findVisible("deleteOwn"));
+        click(find("deleteOwn"));
+        QTRY_VERIFY(findVisible("confirmYes"));
+        const int before = requestsTo("GET", "/programs/5").size();
+        click(find("confirmYes"));
+        QTRY_COMPARE(requestsTo("DELETE", "/exercises/900").size(), 1);
+        QTRY_VERIFY(requestsTo("GET", "/programs/5").size() > before);
+    }
+
+    void thePickerOffersEverythingOnlyWhileItIsOff()
+    {
+        startInTheEditor();
+        click(find("addExercise"));
+        QTRY_VERIFY(findVisible("exercisePicker"));
+        click(find("pickerField"));
+        type("zzz");
+        QTRY_VERIFY(findVisible("pickerNothing"));
+        QVERIFY(find("pickerNothing")->property("text").toString().contains(QStringLiteral("Show everything?")));
+        click(find("pickerEverything"));
+        QTRY_COMPARE(find("pickerNothing")->property("text").toString(), QStringLiteral("No exercise by that name"));
+    }
+
+    void skipWaitsForAListThatCouldNotLoadAndMakesNoSpareProgram()
+    {
+        server->statuses[path("/programs")] = 503;
+        server->responses[path("/programs")] = R"({"status":"error","message":"down"})";
+        startInTheIntro();
+        QTRY_VERIFY(programs->listError().length() > 0);
+        // Back is on the left and Skip on the right of the row.
+        QVERIFY(find("introSkip")->x() > find("introBack")->x());
+        click(find("introSkip"));
+        QTRY_VERIFY(findVisible("introError"));
+        QCOMPARE(find("introError")->property("text").toString(), QStringLiteral("Pride couldn't do that just now. Try again."));
+        QVERIFY(requestsTo("POST", "/programs").isEmpty());
+        QCOMPARE(nav->currentPage(), QStringLiteral("intro-page"));
+        // Once the list answers, empty, the empty program is made.
+        server->statuses[path("/programs")] = 200;
+        server->responses[path("/programs")] = R"({"status":"ok","data":[]})";
+        server->methodResponses["POST " + path("/programs")] = programJson();
+        click(find("introSkip"));
+        QTRY_COMPARE(lastBodyTo("POST", "/programs"), QJsonObject({{"title", "My program"}}));
+        QTRY_COMPARE(nav->currentPage(), QStringLiteral("programs-page"));
+    }
+
+    void theOwnExerciseFormKeepsSaveAndCancelOutsideItsScrollingForm()
+    {
+        startSignedIn();
+        click(find("addOwnExercise"));
+        QTRY_VERIFY(findVisible("ownForm"));
+        settle();
+        for (const char *name : {"ownSave", "ownCancel"}) {
+            QQuickItem *button = find(name);
+            QVERIFY(button);
+            for (QQuickItem *up = button->parentItem(); up; up = up->parentItem())
+                QVERIFY2(up->objectName() != QLatin1String("ownForm"), name);
+            QVERIFY(button->mapToScene(QPointF(0, button->height())).y() <= window()->height());
+        }
     }
 };
 

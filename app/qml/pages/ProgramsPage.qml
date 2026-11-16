@@ -143,7 +143,9 @@ Rectangle {
             root.refocusId = 0
             root.creatingProgram = false
             root.addingRoutine = false
-            if (root.hasCurrent)
+            // The typed title is put back only when the server refused that title; for anything else (the server out
+            // of reach, another field) the form keeps what was typed (spec §8).
+            if (what === "program" && code === "invalid" && field === "title" && root.hasCurrent)
                 titleField.text = root.current.title
         }
         function onGone() {
@@ -201,13 +203,31 @@ Rectangle {
 
                 Text {
                     objectName: "programsEmpty"
-                    visible: Programs.programs.length === 0 && !Programs.listLoading
+                    // A list that could not be fetched is not an empty one (spec §8): it gets its own note below.
+                    visible: Programs.programs.length === 0 && !Programs.listLoading && Programs.listError.length === 0
                     width: parent.width
                     text: Words.programsEmpty
                     wrapMode: Text.WordWrap
                     color: Preferences.textMuted
                     font.family: Preferences.appFont
                     font.pixelSize: Preferences.fontSizeBody
+                }
+
+                Text {
+                    objectName: "programsListError"
+                    visible: Programs.programs.length === 0 && !Programs.listLoading && Programs.listError.length > 0
+                    width: parent.width
+                    text: Programs.listError.length > 0 ? Words.failure(Programs.listError) : ""
+                    wrapMode: Text.WordWrap
+                    color: Preferences.dangerColor
+                    font.family: Preferences.appFont
+                    font.pixelSize: Preferences.fontSizeBody
+                }
+                ActionButton {
+                    objectName: "programsListRetry"
+                    visible: Programs.programs.length === 0 && !Programs.listLoading && Programs.listError.length > 0
+                    text: Words.tryAgain
+                    onClicked: Programs.loadList()
                 }
 
                 Repeater {

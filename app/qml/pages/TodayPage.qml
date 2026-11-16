@@ -27,10 +27,11 @@ Rectangle {
     }
     function isGone(exercise) { return exercise.id === undefined || exercise.removed === true }
 
-    // Each visit asks again, so the week and next up are fresh. The first answer is signing in's to fetch (wiring asks
-    // for everything then), so a page with nothing held yet does not ask a second time.
+    // Each visit asks again, so the week and next up are fresh. A visit after a failed first fetch, or after a start
+    // with no server (where none was made), asks again too, so Today never stays blank. A visit that finds nothing
+    // held, nothing failed and the server in reach is waiting for signing in's own fetch, so it does not ask twice.
     Component.onCompleted: {
-        if (root.hasToday && !Programs.todayLoading)
+        if (!Programs.todayLoading && (root.hasToday || Programs.todayError.length > 0 || Session.offline))
             Programs.loadToday()
     }
 
@@ -74,7 +75,8 @@ Rectangle {
 
             Panel {
                 objectName: "todayUnavailable"
-                visible: Programs.todayError.length > 0 && !root.hasToday
+                // No answer and nothing on its way (a failed ask, or an offline start where none was made).
+                visible: !root.hasToday && (!Programs.todayLoading || Session.offline)
                 Text {
                     width: parent.width
                     text: Words.todayUnavailable

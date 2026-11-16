@@ -13,16 +13,19 @@ Rectangle {
 
     color: Preferences.backgroundPrimary
 
+    Component.onCompleted: root.replay = Profile.profile.introState !== "pending"
+
     // 0 welcome, 1 days, 2 equipment, 3 goal, 4 the starter.
     property int step: 0
     // Fixed when the page is made: saving the answers is what turns a pending intro into a done one, so the profile
     // changes under this page and must not flip it into a replay half-way.
-    readonly property bool replay: Profile.profile.introState !== "pending"
+    // Assigned once, in Component.onCompleted: a live binding would flip as soon as the answers are saved.
+    property bool replay: false
     property int days: Profile.profile.daysPerWeek || 3
     property string goal: Profile.profile.goal || "general"
     property string preset: ""
     property string chosenKey: ""
-    // "answers", "adopt-use", "adopt-tweak", "build", "skip" or "" for nothing.
+    // "answers", "adopt-use", "adopt-tweak", "build", "skip-list" (Skip waiting for the list), "skip" or "" for nothing.
     property string pending: ""
     property string problem: ""
 
@@ -83,11 +86,29 @@ Rectangle {
             return
         }
         Profile.save({ introState: "skipped" })
-        if (Programs.programs.length === 0) {
-            root.problem = ""
+        root.problem = ""
+        // Whether the person has a program is known only from a list that answered. Without one (still loading,
+        // failed, or never asked) the list is asked for first, so Skip never makes a spare "My program".
+        if (Programs.listLoading || Programs.listError.length > 0 || Programs.programs.length === 0) {
+            root.pending = "skip-list"
+            Programs.loadList()
+        } else {
+            Nav.navigateTo("programs-page")
+        }
+    }
+
+    // The list Skip waited for has answered: make the empty program only when it really came back empty.
+    function listAnswered() {
+        if (root.pending !== "skip-list" || Programs.listLoading)
+            return
+        if (Programs.listError.length > 0) {
+            root.pending = ""
+            root.problem = Words.failure(Programs.listError)
+        } else if (Programs.programs.length === 0) {
             root.pending = "skip"
             Programs.create(Words.myProgram)
         } else {
+            root.pending = ""
             Nav.navigateTo("programs-page")
         }
     }
@@ -101,6 +122,7 @@ Rectangle {
 
     Connections {
         target: Programs
+        function onProgramsChanged() { root.listAnswered() }
         function onSaved(what) {
             if (root.pending.length === 0 || what !== root.waitingFor())
                 return
@@ -403,7 +425,8 @@ Rectangle {
 
                 Problem { objectName: "introError"; text: root.problem }
 
-                // Back and Skip are quiet; Next is the step's one main action (the starter step has its own).
+                // Back (left) and Skip (right) are quiet; Next, beside Skip, is the step's one main action (the starter
+                // step has its own).
                 Item {
                     width: parent.width
                     height: 38
@@ -417,15 +440,17 @@ Rectangle {
                         onClicked: root.goTo(root.step - 1)
                     }
                     ActionButton {
+                        id: introSkipButton
                         objectName: "introSkip"
-                        anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.right: parent.right
                         enabled: !root.busy
                         text: Words.introSkip
                         onClicked: root.skip()
                     }
                     ActionButton {
                         objectName: "introNext"
-                        anchors.right: parent.right
+                        anchors.right: introSkipButton.left
+                        anchors.rightMargin: Preferences.spacingSmall
                         visible: root.step < 4
                         primary: true
                         enabled: root.step !== 2 || root.preset.length > 0

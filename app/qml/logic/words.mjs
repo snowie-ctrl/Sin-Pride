@@ -197,6 +197,10 @@ export function goalHint(goal) { return goalHints[goal] || "" }
 const units = { lb: "Pounds (lb)", kg: "Kilograms (kg)" }
 export function unitsLabel(unit) { return units[unit] || unit }
 
+// The chips of a routine target: weight and distance units, as the person says them.
+const unitLabels = { lb: "lb", kg: "kg", km: "km", mi: "mi", m: "m" }
+export function unitLabel(unit) { return unitLabels[unit] || unit }
+
 const presets = { gym: "Full gym", dumbbells: "Dumbbells and a bench", bodyweight: "Bodyweight and bands" }
 export function presetLabel(preset) { return presets[preset] || preset }
 

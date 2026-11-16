@@ -59,7 +59,8 @@ Popup {
             objectName: "pickerNothing"
             visible: root.tiles.length === 0
             width: parent.width
-            text: Words.pickerNothing
+            // "Show everything?" is only an offer while everything is not already on.
+            text: root.everything ? Words.nothingFound : Words.pickerNothing
             wrapMode: Text.WordWrap
             color: Preferences.textMuted
             font.family: Preferences.appFont

@@ -109,7 +109,8 @@ Popup {
     // The name sits on the content, not on the Popup, so the page tests (which walk the item tree) can find it.
     Flickable {
         objectName: "ownForm"
-        anchors.fill: parent
+        anchors { left: parent.left; right: parent.right; top: parent.top; bottom: footer.top
+                  bottomMargin: Preferences.spacingSmall }
         contentHeight: column.implicitHeight
         clip: true
         boundsBehavior: Flickable.StopAtBounds
@@ -206,31 +207,38 @@ Popup {
                     background: null
                 }
             }
+        }
+    }
 
-            // Not a Problem: its height binding loops when it grows inside this popup's scrolling column, and a
-            // Column skips an invisible child anyway, so visibility alone is enough here.
-            Text {
-                objectName: "ownError"
-                width: parent.width
-                visible: text.length > 0
-                text: root.problem
-                wrapMode: Text.WordWrap
-                color: Preferences.dangerColor
-                font.family: Preferences.appFont
-                font.pixelSize: Preferences.fontSizeLabel
-            }
+    // Outside the scrolling form, so the refusal and Save and Cancel are always in view, however long the form is.
+    Column {
+        id: footer
+        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+        spacing: Preferences.spacingSmall
 
-            Row {
-                anchors.right: parent.right
-                spacing: Preferences.spacingSmall
-                ActionButton { objectName: "ownCancel"; text: Words.cancel; onClicked: root.close() }
-                ActionButton {
-                    objectName: "ownSave"
-                    primary: true
-                    enabled: !root.saving
-                    text: Words.save
-                    onClicked: root.save()
-                }
+        // Not a Problem: its height binding loops when it grows inside a column of this popup, and a Column skips
+        // an invisible child anyway, so visibility alone is enough here.
+        Text {
+            objectName: "ownError"
+            width: parent.width
+            visible: text.length > 0
+            text: root.problem
+            wrapMode: Text.WordWrap
+            color: Preferences.dangerColor
+            font.family: Preferences.appFont
+            font.pixelSize: Preferences.fontSizeLabel
+        }
+
+        Row {
+            anchors.right: parent.right
+            spacing: Preferences.spacingSmall
+            ActionButton { objectName: "ownCancel"; text: Words.cancel; onClicked: root.close() }
+            ActionButton {
+                objectName: "ownSave"
+                primary: true
+                enabled: !root.saving
+                text: Words.save
+                onClicked: root.save()
             }
         }
     }

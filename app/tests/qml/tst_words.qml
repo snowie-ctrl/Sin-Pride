@@ -28,6 +28,13 @@ TestCase {
         compare(Words.failure("bad_reply"), "Pride sent a catalog this app can't read. Try again later.")
     }
 
+    function test_unitChipsReadAsThePersonSaysThem() {
+        compare(Words.unitLabel("lb"), "lb")
+        compare(Words.unitLabel("km"), "km")
+        compare(Words.unitLabel("mi"), "mi")
+        compare(Words.unitLabel("m"), "m")
+    }
+
     function test_counts() {
         compare(Words.countLabel(1), "1 exercise")
         compare(Words.countLabel(873), "873 exercises")

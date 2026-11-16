@@ -102,7 +102,9 @@ Rectangle {
             // emission, so the marker is cleared only after them.
             if (!(what === "item" && root.editingItem > 0))
                 root.problem = Words.saveProblem(code, field)
-            if (root.hasRoutine)
+            // The typed name is put back only when the server refused that name; for anything else (the server out
+            // of reach, another field) the form keeps what was typed (spec §8).
+            if (what === "routine" && code === "invalid" && field === "title" && root.hasRoutine)
                 nameField.text = root.routine.title
             Qt.callLater(() => { root.editingItem = 0 })
         }
@@ -473,7 +475,7 @@ Rectangle {
                                         Segmented {
                                             anchors.verticalCenter: parent.verticalCenter
                                             prefix: "itemUnit"
-                                            options: [{ value: "lb", label: "lb" }, { value: "kg", label: "kg" }]
+                                            options: [{ value: "lb", label: Words.unitLabel("lb") }, { value: "kg", label: Words.unitLabel("kg") }]
                                             current: row.weightUnit
                                             onPicked: value => { row.weightUnit = value; row.commit() }
                                         }
@@ -503,7 +505,7 @@ Rectangle {
                                         Segmented {
                                             anchors.verticalCenter: parent.verticalCenter
                                             prefix: "itemDistanceUnit"
-                                            options: [{ value: "km", label: "km" }, { value: "mi", label: "mi" }, { value: "m", label: "m" }]
+                                            options: [{ value: "km", label: Words.unitLabel("km") }, { value: "mi", label: Words.unitLabel("mi") }, { value: "m", label: Words.unitLabel("m") }]
                                             current: row.distUnit
                                             onPicked: value => { row.distUnit = value; row.commit() }
                                         }
