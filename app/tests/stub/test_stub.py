@@ -178,3 +178,27 @@ def test_theIntroSwitchLeavesTheStubReadersIntroPending(client, monkeypatch):
     monkeypatch.setenv("STUB_INTRO", "1")
     stub.reset()
     assert get(client, "/profile").get_json()["data"]["introState"] == "pending"
+
+
+def test_anItemOfARemovedCatalogExerciseCanStillBeEdited(client):
+    program = send(client, "post", "/programs", {"title": "Mine"}).get_json()["data"]
+    program = send(client, "post", "/routines", {"programId": program["id"], "title": "A"}).get_json()["data"]
+    program = send(client, "post", "/routine-items", {"routineId": program["routines"][0]["id"],
+                                                      "exerciseId": 1}).get_json()["data"]
+    item = program["routines"][0]["items"][0]
+    # The catalog drops the exercise after the routine took it; the routine keeps naming it (plan decision 19).
+    next(e for e in stub.state["catalog"]["exercises"] if e["id"] == 1)["removed"] = True
+    answer = send(client, "put", f"/routine-items/{item['id']}", {**item, "sets": 4})
+    assert answer.status_code == 200 and answer.get_json()["data"]["routines"][0]["items"][0]["sets"] == 4
+
+
+def test_deletingAnOwnExerciseStampsTheProgramsItChanged(client, monkeypatch):
+    monkeypatch.setattr(stub, "stamp", lambda: "T-new")
+    own = send(client, "post", "/exercises", {"name": "Sandbag Carry", "measure": "distance_time",
+                                              "primary": ["forearms"], "equipment": ["other"]}).get_json()["data"]
+    program = send(client, "post", "/programs", {"title": "Mine"}).get_json()["data"]
+    program = send(client, "post", "/routines", {"programId": program["id"], "title": "A"}).get_json()["data"]
+    send(client, "post", "/routine-items", {"routineId": program["routines"][0]["id"], "exerciseId": own["id"]})
+    monkeypatch.setattr(stub, "stamp", lambda: "T-deleted")
+    send(client, "delete", f"/exercises/{own['id']}")
+    assert get(client, f"/programs/{program['id']}").get_json()["data"]["updatedAt"] == "T-deleted"

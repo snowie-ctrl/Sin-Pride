@@ -260,9 +260,15 @@ def locked(route):
     return wrapper
 
 
+def lookup(who, exerciseId):
+    """The catalog's or the caller's own exercise, hidden or not (a routine keeps naming one that left; plan
+    decision 19)."""
+    return next((e for e in state["catalog"]["exercises"] if e["id"] == exerciseId), None) or who["own"].get(exerciseId)
+
+
 def visible(who, exerciseId):
     """The catalog's or the caller's own exercise, not hidden (plan decision 19); None when there is none."""
-    found = next((e for e in state["catalog"]["exercises"] if e["id"] == exerciseId), None) or who["own"].get(exerciseId)
+    found = lookup(who, exerciseId)
     return None if found is None or found["removed"] else found
 
 
@@ -381,8 +387,10 @@ def deleteOwnExercise(exerciseId):
     for program in who["programs"].values():
         for routine in program["routines"]:
             kept = [i for i in routine["items"] if i["exerciseId"] != exerciseId]
-            touched += len(kept) != len(routine["items"])
-            routine["items"] = kept
+            if len(kept) != len(routine["items"]):
+                touched += 1
+                routine["items"] = kept
+                program["updatedAt"] = stamp()
     # The stub logs no workout that names an own exercise, so one is never hidden, only deleted.
     del who["own"][exerciseId]
     return ok({"routinesTouched": touched, "hidden": False})
@@ -506,6 +514,7 @@ def activateProgram(programId):
         return notFound()
     for program in who["programs"].values():
         program["active"] = program["id"] == programId
+    who["programs"][programId]["updatedAt"] = stamp()
     return ok(rows(who))
 
 
@@ -632,7 +641,7 @@ def editItem(itemId):
     if item is None:
         return notFound()
     try:
-        targets = checks.itemTargets(visible(who, item["exerciseId"])["measure"], body())
+        targets = checks.itemTargets(lookup(who, item["exerciseId"])["measure"], body())
     except checks.Refusal as refusal:
         return refuse(refusal)
     item.update(targets)

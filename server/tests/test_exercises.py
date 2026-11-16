@@ -72,12 +72,15 @@ def test_someoneElsesOrAHiddenOneIs404(userClient, useDb):
 
 
 def test_deletingAnUnloggedOneTakesItOutOfRoutinesThenDeletesIt(userClient, useDb):
-    conn = useDb(fetchone=[{"SourceKey": "own-0123456789abcdef", "Measure": "distance_time"}, {"n": 2}, None])
+    conn = useDb(fetchone=[{"SourceKey": "own-0123456789abcdef", "Measure": "distance_time"}, {"n": 2}, None],
+                 fetchall=[[{"ProgramID": 5}, {"ProgramID": 6}]])
     assert userClient.delete(f"{A}/exercises/900").get_json()["data"] == {"routinesTouched": 2, "hidden": False}
     sqls = [sql for sql, _ in conn.cur.executed]
     takenOut = next(i for i, s in enumerate(sqls) if s.startswith("DELETE ri FROM RoutineItems"))
     deleted = next(i for i, s in enumerate(sqls) if s.startswith("DELETE FROM Exercises"))
     assert takenOut < deleted and conn.commits == 1
+    # Each program whose routines changed is stamped, so another device's open copy is seen to be old.
+    assert [p for _, p in conn.cur.statements("UPDATE Programs SET UpdatedAt")] == [(5,), (6,)]
 
 
 def test_deletingALoggedOneHidesIt(userClient, useDb):

@@ -228,9 +228,17 @@ def deleteOwnExercise(exerciseId):
                     "JOIN Routines r ON r.RoutineID = ri.RoutineID JOIN Programs p ON p.ProgramID = r.ProgramID "
                     "WHERE ri.ExerciseID = %s AND p.UserID = %s", (exerciseId, uid))
         touched = cur.fetchone()["n"]
+        # The programs whose routines lose an item get a new UpdatedAt, so a device that has one of them open sees
+        # that it changed (spec §8).
+        cur.execute("SELECT DISTINCT p.ProgramID FROM RoutineItems ri JOIN Routines r ON r.RoutineID = ri.RoutineID "
+                    "JOIN Programs p ON p.ProgramID = r.ProgramID WHERE ri.ExerciseID = %s AND p.UserID = %s",
+                    (exerciseId, uid))
+        changedPrograms = [row["ProgramID"] for row in cur.fetchall()]
         cur.execute("DELETE ri FROM RoutineItems ri JOIN Routines r ON r.RoutineID = ri.RoutineID "
                     "JOIN Programs p ON p.ProgramID = r.ProgramID WHERE ri.ExerciseID = %s AND p.UserID = %s",
                     (exerciseId, uid))
+        for programId in changedPrograms:
+            touch(cur, programId)
         cur.execute("SELECT 1 AS one FROM WorkoutExercises WHERE ExerciseID = %s LIMIT 1", (exerciseId,))
         hidden = cur.fetchone() is not None
         if hidden:
