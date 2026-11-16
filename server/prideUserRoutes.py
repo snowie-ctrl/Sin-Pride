@@ -710,43 +710,38 @@ def adoptStarter(key):
 
 @prideUserBP.route("/today", methods=["GET"])
 def today():
-    """Next up in the active program, the next planned day and the week strip, for the date the app sends: the
-    person's own local date, which the server never guesses (plan decision 21)."""
+    """Next up in the active program with last time and open suggestions on its items, the next planned day, the
+    week strip and the latest crowns, for the date the app sends: the person's own local date, which the server
+    never guesses (plan decision 21)."""
     uid = session.requestUID()
     try:
         day = checks.isoDate(request.args.get("date"))
     except checks.Refusal as refusal:
         return refuse(refusal)
     with database() as (conn, cur):
-        cur.execute("SELECT WeekStart FROM Profiles WHERE UserID = %s", (uid,))
-        weekStart = (cur.fetchone() or {}).get("WeekStart", "mon")
-        cur.execute("SELECT ProgramID, Title FROM Programs WHERE UserID = %s AND IsActive = 1 LIMIT 1", (uid,))
-        program = cur.fetchone()
+        cur.execute("SELECT WeekStart, Units FROM Profiles WHERE UserID = %s", (uid,))
+        profile = cur.fetchone() or {}
+        weekStart, units = profile.get("WeekStart", "mon"), profile.get("Units", "lb")
+        program, routines, nextId = history.rotation(cur, uid)
         first = rules.weekStartDate(day, weekStart)
         cur.execute("SELECT DISTINCT PerformedOn FROM Workouts WHERE UserID = %s AND PerformedOn BETWEEN %s AND %s",
                     (uid, first, first + timedelta(days=6)))
         done = {r["PerformedOn"] for r in cur.fetchall()}
+        logged = history.rows(cur, uid)
+        crowns = rules.latestCrowns(logged, history.measuresOf(cur, [r["exerciseId"] for r in logged]), units) \
+            if logged else []
         if program is None:
             return ok({"program": None, "nextUp": None, "plannedDay": None,
-                       "week": rules.week(day, weekStart, set(), done)})
-        programId = program["ProgramID"]
-        cur.execute("SELECT Weekday FROM ProgramDays WHERE ProgramID = %s", (programId,))
+                       "week": rules.week(day, weekStart, set(), done), "crowns": crowns})
+        cur.execute("SELECT Weekday FROM ProgramDays WHERE ProgramID = %s", (program["ProgramID"],))
         weekdays = {r["Weekday"] for r in cur.fetchall()}
-        cur.execute("SELECT RoutineID, Title FROM Routines WHERE ProgramID = %s ORDER BY OrderIndex, RoutineID",
-                    (programId,))
-        routines = cur.fetchall()
-        cur.execute("SELECT RoutineID FROM Workouts WHERE UserID = %s AND ProgramID = %s "
-                    "ORDER BY PerformedOn DESC, CreatedAt DESC, WorkoutID DESC LIMIT 1", (uid, programId))
-        latest = (cur.fetchone() or {}).get("RoutineID")
-        nextId = rules.nextUp([r["RoutineID"] for r in routines], latest)
         nextUp = None
         if nextId is not None:
-            cur.execute("SELECT ItemID, RoutineID, ExerciseID, Sets, RepsMin, RepsMax, TargetWeight, TargetUnit, "
-                        "TargetSeconds, TargetDistance, DistanceUnit, RestSeconds, Note FROM RoutineItems "
-                        "WHERE RoutineID = %s ORDER BY OrderIndex, ItemID", (nextId,))
+            items = history.itemsOf(cur, nextId)
+            suggestions = history.openSuggestions(cur, uid, [i["ItemID"] for i in items])
             nextUp = {"routineId": nextId, "title": next(r["Title"] for r in routines if r["RoutineID"] == nextId),
-                      "items": [itemJson(r) for r in cur.fetchall()]}
+                      "items": [history.draftItem(i, logged, suggestions) for i in items]}
         planned = rules.plannedDay(day, weekdays, day in done) if routines else None
-    return ok({"program": {"id": programId, "title": program["Title"]}, "nextUp": nextUp,
+    return ok({"program": {"id": program["ProgramID"], "title": program["Title"]}, "nextUp": nextUp,
                "plannedDay": planned.isoformat() if planned else None,
-               "week": rules.week(day, weekStart, weekdays if routines else set(), done)})
+               "week": rules.week(day, weekStart, weekdays if routines else set(), done), "crowns": crowns})

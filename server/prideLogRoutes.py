@@ -265,3 +265,91 @@ def deleteWorkout(workoutId):
         nextUp = history.nextUpJson(*history.rotation(cur, uid))
         conn.commit()
         return ok({"deleted": workoutId, "nextUp": nextUp})
+
+
+# ---- Progress and records (spec §6 Progress; plan decisions 10-13) ----
+
+@prideLogBP.route("/progress/<int:exerciseId>", methods=["GET"])
+def progress(exerciseId):
+    """One exercise's chart points, records and latest workouts. A hidden exercise still has its history."""
+    uid = session.requestUID()
+    with database() as (conn, cur):
+        cur.execute("SELECT ExerciseID, Measure FROM Exercises WHERE ExerciseID = %s "
+                    "AND (OwnerUserID IS NULL OR OwnerUserID = %s)", (exerciseId, uid))
+        exercise = cur.fetchone()
+        if exercise is None:
+            return notFound()
+        units = history.unitsOf(cur, uid)
+        logged = history.rows(cur, uid, exerciseIds=[exerciseId])
+        measure = exercise["Measure"]
+        return ok({"exerciseId": exerciseId, "measure": measure, "units": units,
+                   "points": rules.series(logged, measure, units), "records": rules.records(logged, measure, units),
+                   "recent": rules.recent(logged)})
+
+
+@prideLogBP.route("/records", methods=["GET"])
+def allRecords():
+    uid = session.requestUID()
+    with database() as (conn, cur):
+        units = history.unitsOf(cur, uid)
+        logged = history.rows(cur, uid)
+        measures = history.measuresOf(cur, [r["exerciseId"] for r in logged])
+        return ok(rules.recordsByExercise(logged, measures, units))
+
+
+# ---- Suggestions (spec §5, §6 Today: Take it / Not yet; plan decision 19) ----
+
+def closed():
+    return jsonify({"status": "closed", "message": "that suggestion is no longer open"}), 409
+
+
+def ownedSuggestion(cur, uid, suggestionId):
+    cur.execute("SELECT s.SuggestionID, s.ItemID, s.Kind, s.ProposedWeight, s.ProposedUnit, s.ProposedRepsMin, "
+                "s.ProposedRepsMax, s.ProposedSeconds, s.BasedOnWorkoutID, s.State, r.ProgramID FROM Suggestions s "
+                "JOIN RoutineItems i ON i.ItemID = s.ItemID JOIN Routines r ON r.RoutineID = i.RoutineID "
+                "WHERE s.SuggestionID = %s AND s.UserID = %s FOR UPDATE", (suggestionId, uid))
+    return cur.fetchone()
+
+
+@prideLogBP.route("/suggestions/<int:suggestionId>/accept", methods=["POST"])
+def acceptSuggestion(suggestionId):
+    """Writes the proposed target onto the routine item (spec §4) and touches the program, so a device that has it
+    open sees the change (spec §8)."""
+    uid = session.requestUID()
+    with database() as (conn, cur):
+        found = ownedSuggestion(cur, uid, suggestionId)
+        if found is None:
+            return notFound()
+        if found["State"] != "open":
+            return closed()
+        if found["Kind"] != "increase":
+            return refuse(checks.Refusal("kind", "a stall is noted, not taken"))
+        if found["ProposedWeight"] is not None:
+            cur.execute("UPDATE RoutineItems SET TargetWeight = %s, TargetUnit = %s WHERE ItemID = %s",
+                        (float(found["ProposedWeight"]), found["ProposedUnit"], found["ItemID"]))
+        elif found["ProposedRepsMin"] is not None:
+            cur.execute("UPDATE RoutineItems SET RepsMin = %s, RepsMax = %s WHERE ItemID = %s",
+                        (found["ProposedRepsMin"], found["ProposedRepsMax"], found["ItemID"]))
+        else:
+            cur.execute("UPDATE RoutineItems SET TargetSeconds = %s WHERE ItemID = %s",
+                        (found["ProposedSeconds"], found["ItemID"]))
+        cur.execute("UPDATE Suggestions SET State = 'accepted' WHERE SuggestionID = %s", (suggestionId,))
+        user.touch(cur, found["ProgramID"])
+        conn.commit()
+    return ok({"suggestion": {**history.suggestionJson(found), "state": "accepted"}, "programId": found["ProgramID"]})
+
+
+@prideLogBP.route("/suggestions/<int:suggestionId>/dismiss", methods=["POST"])
+def dismissSuggestion(suggestionId):
+    """Not yet (a step-up) or Noted (a stall): the routine is left alone, and the item gets nothing more until
+    another qualifying workout (spec §5)."""
+    uid = session.requestUID()
+    with database() as (conn, cur):
+        found = ownedSuggestion(cur, uid, suggestionId)
+        if found is None:
+            return notFound()
+        if found["State"] != "open":
+            return closed()
+        cur.execute("UPDATE Suggestions SET State = 'dismissed' WHERE SuggestionID = %s", (suggestionId,))
+        conn.commit()
+    return ok({"suggestion": {**history.suggestionJson(found), "state": "dismissed"}})

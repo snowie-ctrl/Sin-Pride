@@ -169,9 +169,9 @@ Each starter is filled for the caller: the variant their equipment allows (gym, 
 
 | Route | Body | Answer |
 |---|---|---|
-| `GET /today?date=YYYY-MM-DD` | | `data: {program, nextUp, plannedDay, week}`; `400` naming `date` when it is missing or not a date |
+| `GET /today?date=YYYY-MM-DD` | | `data: {program, nextUp, plannedDay, week, crowns}`; `400` naming `date` when it is missing or not a date |
 
-`date` is the app's local date. `nextUp` is the routine after the latest workout's in the active program (by rotation, wrapping round), or the first. `plannedDay` is the first planned weekday from `date`, `date` itself unless a workout is already logged that day. `week` is the 7 days from the profile's week start holding `date`: `done` when any workout is logged that day; `planned` only on `date` and later and never on a done day. The answer: `program` is `{id, title}` or `null` (no active program); `nextUp` is `{routineId, title, items: [item]}` or `null`; `plannedDay` is a date or `null`; `week` is `[{date, weekday, planned, done}]`. Milestone 3 adds last time's sets, open suggestions and the latest crowns.
+`date` is the app's local date. `nextUp` is the routine after the latest workout's in the active program (by rotation, wrapping round), or the first. `plannedDay` is the first planned weekday from `date`, `date` itself unless a workout is already logged that day. `week` is the 7 days from the profile's week start holding `date`: `done` when any workout is logged that day; `planned` only on `date` and later and never on a done day. The answer: `program` is `{id, title}` or `null` (no active program); `nextUp` is `{routineId, title, items: [item]}` or `null`; `plannedDay` is a date or `null`; `week` is `[{date, weekday, planned, done}]`; `crowns` is `[record]`. Each `nextUp` item also carries `measure`, `last` and `suggestion` (as a draft item; see Workouts), and the answer carries `crowns`: the three latest crowns, newest first (see Progress).
 
 ## Workouts
 
@@ -211,6 +211,47 @@ performedOn, sets: [set]}`: the latest workout that logged this item, or else th
 Saving, editing or deleting a workout settles the suggestions of every routine item it logged (see Suggestions). The
 result card's `crowns` are the records this workout beat (see Progress); an exercise's first workout earns none.
 `suggestions` are the open ones based on this workout.
+
+## Progress and records
+
+| Route | Body | Answer |
+|---|---|---|
+| `GET /progress/<exerciseId>` | | `data: {exerciseId, measure, units, points: [point], records: [record], recent: [{workoutId, performedOn, sets: [set]}]}`; `404` for an exercise that is neither the catalog's nor the person's |
+| `GET /records` | | `data: [{exerciseId, measure, lastOn, records: [record]}]`, every exercise the person has logged, the most recently logged first |
+
+Records are worked out from the logged sets each time, never stored. By measure: weight × reps has `heaviest` and
+`e1rm` (the best estimated one-rep max, Epley, from sets of 12 reps or fewer); reps has `reps` and, with added
+weight, `heaviest`; time has `time`; distance and time has `distance` and `pace` (the fewest seconds a km). Warm-ups
+never count; comparisons convert to kg and km; on a tie the earlier set keeps it. A record: `{kind, workoutId,
+performedOn, weight, weightUnit, reps, seconds, distance, distanceUnit, estimate, estimateUnit}`, the set as it was
+entered; `estimate` (in the person's units) only for `e1rm`. A crown is a record with `exerciseId`: a workout earns
+one when its best set of a kind beats every set logged before it (an earlier date, or the same date saved earlier);
+an exercise's first workout earns none.
+
+A point is one workout, oldest first: `{workoutId, performedOn, value, best, estimate, volume, crowns: [kinds]}`.
+`value` is the best set in the person's units (a weight; reps; seconds; km, or mi when the person uses lb), `best`
+that set, `estimate` the best estimated one-rep max and `volume` the weight × reps of the working sets (both in the
+person's units, `null` where they do not apply), `crowns` the kinds of record it set.
+
+## Suggestions
+
+| Route | Body | Answer |
+|---|---|---|
+| `POST /suggestions/<id>/accept` | | `data: {suggestion, programId}`: the proposed target written onto the routine item; `400` naming `kind` for a stall; `409 {status:"closed"}` when it is no longer open |
+| `POST /suggestions/<id>/dismiss` | | `data: {suggestion}`; `409 {status:"closed"}` |
+
+A suggestion: `{id, itemId, kind, weight, unit, repsMin, repsMax, seconds, basedOn, state}`. `kind` is `increase`
+(a step-up: `weight` and `unit`, or `repsMin` and `repsMax`, or `seconds`) or `stall` (no proposal; the app shows a
+tip). `state` is `open`, `accepted`, `dismissed` or `withdrawn`. They are made when a workout is saved, edited or
+deleted, for each routine item it logged, by the item's latest workout:
+- **Step-up:** every planned set done as a working set and each at the top of the rep range, at or above the target
+  weight; the proposal is the target (or, with none, the lightest set) plus the profile's increment for the
+  exercise's region (upper and full: the upper one), rounded to 5 lb or 2.5 kg and at least one step up. Reps with no
+  added weight: the range up 2. Time: 10 seconds more. Distance and time: none.
+- **Stall:** at least four workouts, and the last three brought nothing above the best before them; once made, none
+  again until a workout improves on everything before it.
+- At most one open per item; a newer one withdraws it, and so does a latest workout that no longer earns it. A
+  step-up dismissed or taken is not made again for the same workout.
 
 ## Admin (`/api/pride-admin`, LAN only)
 
