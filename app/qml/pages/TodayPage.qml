@@ -237,7 +237,7 @@ Rectangle {
                                 spacing: 2
                                 Text {
                                     objectName: "todayItemName"
-                                    text: row.exercise.name || ""
+                                    text: row.exercise.name || Words.unknownExercise
                                     color: Preferences.textPrimary
                                     font.family: Preferences.appFont
                                     font.pixelSize: Preferences.fontSizeBody

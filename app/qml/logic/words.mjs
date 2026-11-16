@@ -305,3 +305,22 @@ export function deleteProgramQuestion(title) {
     return `Delete ${title}? Its routines go with it. Workouts you've logged keep everything.`
 }
 export function deleteRoutineQuestion(title) { return `Delete ${title}? Workouts you've logged keep everything.` }
+
+// ---- The Routine editor ----
+export function backTo(title) { return `Back to ${title}` }
+export const addExercise = "Add exercise"
+export const remove = "Remove"
+export const setsLabel = "Sets"
+export const repsLabel = "Reps"
+export const weightLabel = "Weight"
+export const timeLabel = "Time"
+export const distanceLabel = "Distance"
+export const restLabel = "Rest"
+export const noteLabel = "Note"
+export const unknownExercise = "An exercise this device doesn't know"
+export const pickerTitle = "Add an exercise"
+export const pickerFilter = "Narrow by name"
+export const showEverything = "Show everything"
+export const pickerNothing = "Nothing that fits your equipment. Show everything?"
+export const routineMissing = "That routine isn't open any more."
+export const backToPrograms = "Back to Programs"

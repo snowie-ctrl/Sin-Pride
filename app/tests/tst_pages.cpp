@@ -1164,6 +1164,135 @@ private slots:
         QTRY_VERIFY(!findVisible("quickSearchResults"));
         QCOMPARE(find("quickSearchField")->property("text").toString(), QString());
     }
+
+    // ---- The Routine editor ----
+
+    void startInTheEditor(const QByteArray &answer = QByteArray())
+    {
+        server->responses[path("/programs")] = twoPrograms();
+        server->responses[path("/programs/5")] = answer.isEmpty() ? programJson() : answer;
+        start();
+        QTRY_VERIFY(findVisible("todayPage"));
+        programs->open(5);
+        QTRY_COMPARE(programs->currentId(), 5);
+        programs->openRoutine(50);
+        nav->navigateTo("routine-page");
+        QTRY_VERIFY(findVisible("routinePage"));
+        QTRY_COMPARE(countVisible("itemRow"), 1);
+    }
+
+    void replaceText(const char *name, const QString &text)
+    {
+        click(find(name));
+        QTest::keyClick(window(), Qt::Key_A, Qt::ControlModifier);
+        type(text);
+        QTest::keyClick(window(), Qt::Key_Return);
+    }
+
+    void theEditorShowsItsItems()
+    {
+        startInTheEditor();
+        QCOMPARE(find("routineNameField")->property("text").toString(), QStringLiteral("Upper"));
+        QCOMPARE(find("itemName")->property("text").toString(), QStringLiteral("Barbell Curl"));
+        QCOMPARE(find("itemSets")->property("text").toString(), QStringLiteral("3"));
+        QCOMPARE(find("itemWeight")->property("text").toString(), QStringLiteral("135"));
+        QCOMPARE(find("itemRest")->property("text").toString(), QStringLiteral("1:30"));
+        QVERIFY(!findVisible("itemGone"));
+    }
+
+    void changingOneFieldSendsTheWholeRow()
+    {
+        startInTheEditor();
+        server->methodResponses["PUT " + path("/routine-items/500")] = programJson();
+        replaceText("itemSets", "4");
+        QTRY_COMPARE(requestsTo("PUT", "/routine-items/500").size(), 1);
+        const QJsonObject sent = lastBodyTo("PUT", "/routine-items/500");
+        QCOMPARE(sent.value("sets").toInt(), 4);
+        QCOMPARE(sent.value("repsMin").toInt(), 8);
+        QCOMPARE(sent.value("targetWeight").toDouble(), 135.0);
+        QCOMPARE(sent.value("targetUnit").toString(), QStringLiteral("lb"));
+        QCOMPARE(sent.value("restSeconds").toInt(), 90);
+        QVERIFY(sent.contains("note") && sent.value("note").isNull());
+    }
+
+    void aReversedRangeIsCaughtBeforeSending()
+    {
+        startInTheEditor();
+        replaceText("itemRepsMin", "15");
+        QTRY_VERIFY(findVisible("itemError"));
+        QCOMPARE(find("itemError")->property("text").toString(),
+                 QStringLiteral("The top of the range is 1 to 100, and not below the bottom"));
+        QVERIFY(requestsTo("PUT", "/routine-items/500").isEmpty());
+        QCOMPARE(find("itemRepsMin")->property("text").toString(), QStringLiteral("15"));
+    }
+
+    void anOfflineSaveKeepsWhatWasTyped()
+    {
+        startInTheEditor();
+        api->setBases(QString(), QStringLiteral("http://127.0.0.1:1/api/pride"));
+        api->setPingDelays(60000, 60000);
+        replaceText("itemSets", "4");
+        QTRY_VERIFY_WITH_TIMEOUT(findVisible("itemError"), 10000);
+        QCOMPARE(find("itemError")->property("text").toString(),
+                 QStringLiteral("Can't reach Pride right now. Nothing was lost; try again."));
+        QCOMPARE(find("itemSets")->property("text").toString(), QStringLiteral("4"));
+    }
+
+    void thePickerFollowsTheProfilesEquipmentAndAdds()
+    {
+        startInTheEditor();
+        server->methodResponses["POST " + path("/routine-items")] = programJson();
+        click(find("addExercise"));
+        QTRY_VERIFY(findVisible("exercisePicker"));
+        // The profile has barbell and bodyweight: Barbell Curl fits; Kettlebell Halo and Pullups (a pull-up bar) don't.
+        QTRY_COMPARE(countVisible("pickerRow"), 1);
+        click(find("pickerEverything"));
+        QTRY_COMPARE(countVisible("pickerRow"), 3);
+        click(find("pickerRow"));
+        QTRY_COMPARE(lastBodyTo("POST", "/routine-items"), QJsonObject({{"routineId", 50}, {"exerciseId", 1}}));
+        QTRY_VERIFY(!findVisible("exercisePicker"));
+    }
+
+    void aRemovedExerciseIsStillNamedInTheEditor()
+    {
+        QByteArray answer = programJson();
+        answer.replace(R"("id":500,"exerciseId":1)", R"("id":500,"exerciseId":9)");
+        startInTheEditor(answer);
+        QCOMPARE(find("itemName")->property("text").toString(), QStringLiteral("Old Row"));
+        QVERIFY(findVisible("itemGone"));
+    }
+
+    void removingAndReorderingItems()
+    {
+        QByteArray two = programJson();
+        two.replace(R"("restSeconds":90,"note":null}]})",
+                    R"("restSeconds":90,"note":null},{"id":501,"exerciseId":7,"sets":3,"repsMin":5,"repsMax":8,"targetWeight":null,"targetUnit":null,"targetSeconds":null,"targetDistance":null,"distanceUnit":null,"restSeconds":null,"note":null}]})");
+        server->responses[path("/programs")] = twoPrograms();
+        server->responses[path("/programs/5")] = two;
+        start();
+        QTRY_VERIFY(findVisible("todayPage"));
+        programs->open(5);
+        QTRY_COMPARE(programs->currentId(), 5);
+        programs->openRoutine(50);
+        nav->navigateTo("routine-page");
+        QTRY_COMPARE(countVisible("itemRow"), 2);
+        server->methodResponses["POST " + path("/routine-items/reorder")] = two;
+        click(find("itemName"));
+        QTest::keyClick(window(), Qt::Key_Down, Qt::AltModifier);
+        QTRY_COMPARE(lastBodyTo("POST", "/routine-items/reorder"),
+                     QJsonObject({{"routineId", 50}, {"order", QJsonArray{501, 500}}}));
+        server->methodResponses["DELETE " + path("/routine-items/500")] = programJson();
+        click(find("itemDelete"));
+        QTRY_COMPARE(requestsTo("DELETE", "/routine-items/500").size(), 1);
+    }
+
+    void renamingTheRoutine()
+    {
+        startInTheEditor();
+        server->methodResponses["PUT " + path("/routines/50")] = programJson();
+        replaceText("routineNameField", "Upper A");
+        QTRY_COMPARE(lastBodyTo("PUT", "/routines/50"), QJsonObject({{"title", "Upper A"}}));
+    }
 };
 
 QTEST_MAIN(TestPages)
