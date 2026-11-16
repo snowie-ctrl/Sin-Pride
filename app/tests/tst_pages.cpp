@@ -531,6 +531,22 @@ private slots:
         QTRY_COMPARE(lastBodyTo("PUT", "/programs/5"), QJsonObject({{"title", "UL"}}));
     }
 
+    void theTitleFieldStillFollowsTheOpenProgramAfterARefusedRename()
+    {
+        startOnPrograms();
+        QByteArray mine = programJson(6);
+        mine.replace("Upper/Lower", "Mine");
+        mine.replace(R"("active":true)", R"("active":false)");
+        server->responses[path("/programs/6")] = mine;
+        click(find("programTitleField"));
+        QTest::keyClick(window(), Qt::Key_A, Qt::ControlModifier);
+        QTest::keyClick(window(), Qt::Key_Space);
+        QTest::keyClick(window(), Qt::Key_Return);
+        QTRY_VERIFY(findVisible("programsError"));
+        programs->open(6);
+        QTRY_COMPARE(find("programTitleField")->property("text").toString(), QStringLiteral("Mine"));
+    }
+
     void aDayChipSendsTheWholeSet()
     {
         startOnPrograms();

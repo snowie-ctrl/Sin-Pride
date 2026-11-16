@@ -65,7 +65,7 @@ Rectangle {
         if (!root.hasCurrent)
             return
         const title = text.trim()
-        if (title === root.current.title || title === root.sentTitle)
+        if (title === root.current.title || (root.sentTitle.length > 0 && title === root.sentTitle))
             return
         const bad = Forms.titleProblem(title)
         if (bad.length > 0) {
@@ -129,6 +129,7 @@ Rectangle {
         function onFailed(what, code, field) {
             root.problem = Words.saveProblem(code, field)
             root.sentTitle = ""
+            root.refocusId = 0
             root.creatingProgram = false
             root.addingRoutine = false
             if (root.hasCurrent)
@@ -138,6 +139,7 @@ Rectangle {
             root.notice = Words.goneElsewhere
             root.problem = ""
             root.sentTitle = ""
+            root.refocusId = 0
             root.creatingProgram = false
             root.addingRoutine = false
         }
@@ -326,10 +328,16 @@ Rectangle {
                 InputField {
                     id: titleField
                     objectName: "programTitleField"
-                    text: root.hasCurrent ? (root.current.title || "") : ""
                     maximumLength: 120
                     onAccepted: root.renameProgram(text)
                     onEditingFinished: root.renameProgram(text)
+                }
+                // A Binding, not a `text:` binding: putting the saved title back by assignment (a refused rename)
+                // would destroy a plain binding, and the field would then stop following the open program.
+                Binding {
+                    target: titleField
+                    property: "text"
+                    value: root.hasCurrent ? (root.current.title || "") : ""
                 }
 
                 Row {
