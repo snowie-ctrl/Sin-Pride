@@ -1,4 +1,4 @@
-// Copied from Gluttony app/services/Nav.h at c1ed705; signing in lands on the Catalog.
+// Copied from Gluttony app/services/Nav.h at c1ed705; signing in lands on Today.
 #pragma once
 #include <QObject>
 #include <QString>
@@ -11,7 +11,7 @@ class Nav : public QObject
     Q_OBJECT
 
     Q_PROPERTY(QString currentPage READ currentPage NOTIFY changePage)
-    // Where signing in lands: the Catalog; grab.ps1 points it elsewhere to photograph a page.
+    // Where signing in lands: Today; grab.ps1 points it elsewhere to photograph a page.
     Q_PROPERTY(QString startPage READ startPage WRITE setStartPage NOTIFY startPageChanged)
 
 public:
@@ -30,7 +30,8 @@ public:
     Q_INVOKABLE void navigateTo(const QString &page)
     {
         m_currentPage = page;
-        if (page == QLatin1String("login-page") || page == QLatin1String("nav-shell")) {
+        if (page == QLatin1String("login-page") || page == QLatin1String("nav-shell")
+            || page == QLatin1String("intro-page")) {
             emit changePage(page);
             return;
         }
@@ -46,5 +47,5 @@ signals:
 
 private:
     QString m_currentPage = QStringLiteral("login-page");
-    QString m_startPage = QStringLiteral("catalog-page");
+    QString m_startPage = QStringLiteral("today-page");
 };

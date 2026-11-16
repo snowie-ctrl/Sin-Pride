@@ -20,10 +20,33 @@ Item {
         Nav.navigateTo("exercise-page")
     }
 
+    // The list is worked out again from what is typed, so a catalog that changes under an open list is followed.
+    function recompute() {
+        search.matches = Catalog.search(field.text, 8)
+        list.currentIndex = 0
+    }
+
     function close() {
         field.text = ""
         search.matches = []
         field.focus = false
+    }
+
+    Connections {
+        target: ExerciseStore
+        function onChanged() {
+            if (field.text.length > 0)
+                search.recompute()
+        }
+    }
+
+    // The person's own exercises are searched too, so a change to them is followed the same way.
+    Connections {
+        target: Catalog
+        function onOwnChanged() {
+            if (field.text.length > 0)
+                search.recompute()
+        }
     }
 
     Shortcut {
@@ -40,10 +63,7 @@ Item {
         objectName: "quickSearchField"
         anchors.fill: parent
         placeholderText: Words.quickSearch
-        onTextEdited: {
-            search.matches = Catalog.search(text, 8)
-            list.currentIndex = 0
-        }
+        onTextEdited: search.recompute()
         onAccepted: search.openAt(Math.max(0, list.currentIndex))
         Keys.onDownPressed: list.incrementCurrentIndex()
         Keys.onUpPressed: list.decrementCurrentIndex()

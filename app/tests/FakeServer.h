@@ -1,4 +1,4 @@
-// Copied from Gluttony app/tests/FakeServer.h at c1ed705; as it is.
+// Copied from Gluttony app/tests/FakeServer.h at c1ed705; answers and records by method too.
 #pragma once
 #include <QHash>
 #include <QPointer>
@@ -20,6 +20,9 @@ public:
     QList<QUrl> requests;                   // every request, in arrival order
     QList<QByteArray> bodies;               // each request's body, in step with `requests`
     QList<QByteArray> heads;                // each request's raw head, in step with `requests`
+    QList<QByteArray> methods;              // each request's HTTP method, in step with `requests`
+    QHash<QString, QByteArray> methodResponses;   // "POST /api/pride/programs" -> body, before responses
+    QHash<QString, int> methodStatuses;           // likewise, a status; queued answers still win
     QHash<QString, QList<QByteArray>> queued;   // path -> bodies served first, in order, then `responses`
     QHash<QString, int> statuses;               // path -> HTTP status, 200 when absent
     QHash<QString, QList<int>> queuedStatuses;  // path -> statuses served first, in order, then `statuses`
@@ -62,21 +65,30 @@ protected:
             if (buffer->size() < headerEnd + 4 + length)
                 return;
 
+            const QByteArray method = head.left(head.indexOf(' '));
             const QUrl url(QString::fromLatin1(head.split(' ').value(1)));
             requests.append(url);
+            methods.append(method);
             heads.append(head);
             bodies.append(buffer->mid(headerEnd + 4, length));
 
+            // Method answers sit between the path's answers and the queue: a queued answer wins, then
+            // "METHOD path", then the path alone.
+            const QString key = QString::fromLatin1(method) + QLatin1Char(' ') + url.path();
             QByteArray body = responses.value(url.path(), R"({"status":"ok","data":[]})");
+            if (methodResponses.contains(key))
+                body = methodResponses.value(key);
             QList<QByteArray> &line = queued[url.path()];
             if (!line.isEmpty())
                 body = line.takeFirst();
             int status = statuses.value(url.path(), 200);
+            if (methodStatuses.contains(key))
+                status = methodStatuses.value(key);
             QList<int> &statusLine = queuedStatuses[url.path()];
             if (!statusLine.isEmpty())
                 status = statusLine.takeFirst();
             const QByteArray reason = status == 200 ? "OK" : status == 401 ? "Unauthorized"
-                                    : status == 403 ? "Forbidden" : status == 404 ? "Not Found"
+                                    : status == 400 ? "Bad Request" : status == 403 ? "Forbidden" : status == 404 ? "Not Found"
                                     : status == 409 ? "Conflict" : "Error";
             const QPointer<QTcpSocket> target(socket);
             const auto send = [target, status, reason, body]() {

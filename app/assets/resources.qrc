@@ -3,8 +3,12 @@
         <file>qtquickcontrols2.conf</file>
         <file>fonts/Cinzel/Cinzel.ttf</file>
         <file>icons/prideAppIcon.png</file>
+        <file>images/today.svg</file>
+        <file>images/programs.svg</file>
         <file>images/catalog.svg</file>
+        <file>images/settings.svg</file>
         <file>images/signout.svg</file>
         <file>images/back.svg</file>
+        <file>images/grip.svg</file>
     </qresource>
 </RCC>

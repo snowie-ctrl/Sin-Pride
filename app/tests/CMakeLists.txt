@@ -55,5 +55,15 @@ pride_test(tst_pages
             ../services/Session.h ../services/Session.cpp
             ../services/ExerciseStore.h ../services/ExerciseStore.cpp
             ../services/Catalog.h ../services/Catalog.cpp
+            ../services/Profile.h ../services/Profile.cpp
+            ../services/Programs.h ../services/Programs.cpp
             ../services/Wiring.h ../services/Wiring.cpp
     LIBS Qt6::Network Qt6::Gui Qt6::Quick Qt6::QuickControls2 pride_uiplugin)
+
+pride_test(tst_profile
+    SOURCES tst_profile.cpp FakeServer.h ${PRIDE_API} ../services/Profile.h ../services/Profile.cpp
+    LIBS Qt6::Network)
+
+pride_test(tst_programs
+    SOURCES tst_programs.cpp FakeServer.h ${PRIDE_API} ../services/Programs.h ../services/Programs.cpp
+    LIBS Qt6::Network)

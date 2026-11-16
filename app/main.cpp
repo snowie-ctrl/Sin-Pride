@@ -21,6 +21,8 @@
 #include "services/Catalog.h"
 #include "services/ExerciseStore.h"
 #include "services/Nav.h"
+#include "services/Profile.h"
+#include "services/Programs.h"
 #include "services/Session.h"
 #include "services/Wiring.h"
 
@@ -48,11 +50,13 @@ int main(int argc, char *argv[])
     AccountStore accounts(dataDir);
     Session session(api);
     ExerciseStore exercises(api, dataDir);
-    Catalog catalog(exercises);
+    Catalog catalog(exercises, api);
+    Profile profile(api);
+    Programs programs(api);
     // Pictures load through managers this makes, so they carry the session token.
     AuthNetworkFactory networkFactory;
 
-    wireServices(session, accounts, exercises, catalog);
+    wireServices(session, accounts, exercises, catalog, profile, programs);
 
     // Declared after everything QML is given, so it is destroyed first.
     QQmlApplicationEngine engine;
@@ -63,6 +67,8 @@ int main(int argc, char *argv[])
     context->setContextProperty("Session", &session);
     context->setContextProperty("ExerciseStore", &exercises);
     context->setContextProperty("Catalog", &catalog);
+    context->setContextProperty("Profile", &profile);
+    context->setContextProperty("Programs", &programs);
 
     engine.loadFromModule("Pride", "Main");
     if (engine.rootObjects().isEmpty())
@@ -81,6 +87,26 @@ int main(int argc, char *argv[])
     const QString startText = qEnvironmentVariable("PRIDE_START_TEXT");
     if (!startText.isEmpty())
         catalog.setText(startText);
+
+    // Dev affordances for the planning pages: PRIDE_START_PROGRAM opens that program once signed in, and
+    // PRIDE_START_ROUTINE then opens that routine as soon as the program has arrived (the page itself is chosen with
+    // PRIDE_START_PAGE). Each connection fires once. Nothing happens unless the variables are set.
+    const int startProgram = qEnvironmentVariableIntValue("PRIDE_START_PROGRAM");
+    const int startRoutine = qEnvironmentVariableIntValue("PRIDE_START_ROUTINE");
+    if (startProgram > 0) {
+        // The routine waits for the program's own answer: it is connected only after open() has been asked, so a
+        // currentChanged from resetting at sign-in cannot use it up.
+        QObject::connect(&session, &Session::loginSucceeded, &programs,
+                         [&programs, startProgram, startRoutine]() {
+                             programs.open(startProgram);
+                             if (startRoutine > 0) {
+                                 QObject::connect(&programs, &Programs::currentChanged, &programs,
+                                                  [&programs, startRoutine]() { programs.openRoutine(startRoutine); },
+                                                  Qt::SingleShotConnection);
+                             }
+                         },
+                         Qt::SingleShotConnection);
+    }
 
     // A known device signs itself in; otherwise the sign-in page asks.
     session.identifyDevice();

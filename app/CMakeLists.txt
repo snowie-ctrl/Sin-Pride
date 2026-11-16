@@ -35,6 +35,10 @@ qt_add_executable(appPride
     services/ExerciseStore.cpp
     services/Catalog.h
     services/Catalog.cpp
+    services/Profile.h
+    services/Profile.cpp
+    services/Programs.h
+    services/Programs.cpp
     services/Wiring.h
     services/Wiring.cpp
 )
@@ -58,15 +62,32 @@ qt_add_qml_module(pride_ui
         qml/pages/LoginPage.qml
         qml/pages/CatalogPage.qml
         qml/pages/ExercisePage.qml
+        qml/pages/SettingsPage.qml
+        qml/pages/IntroPage.qml
+        qml/pages/TodayPage.qml
+        qml/pages/ProgramsPage.qml
+        qml/pages/RoutinePage.qml
         qml/component/QuickSearch.qml
         qml/component/TintedIcon.qml
         qml/component/ActionButton.qml
         qml/component/InputField.qml
+        qml/component/NumberField.qml
+        qml/component/ExercisePicker.qml
         qml/component/Chip.qml
+        qml/component/Segmented.qml
+        qml/component/Caption.qml
+        qml/component/Problem.qml
         qml/component/PictureFrame.qml
         qml/component/ExerciseTile.qml
         qml/component/FilterPanel.qml
+        qml/component/WeekStrip.qml
+        qml/component/DayChips.qml
+        qml/component/ConfirmDialog.qml
+        qml/component/OwnExerciseForm.qml
+        qml/component/AddToRoutine.qml
         qml/logic/words.mjs
+        qml/logic/forms.mjs
+        qml/logic/units.mjs
 )
 target_link_libraries(pride_ui PRIVATE Qt6::Quick Qt6::QuickControls2)
 

@@ -129,6 +129,40 @@ private slots:
         QCOMPARE(again.count(), 2);
     }
 
+    void settledOnlyOnceSomethingIsKnown()
+    {
+        FakeServer server;
+        server.responses[catalogPath] = catalogJson("v1");
+        server.holdNext[catalogPath] = 1;
+        Api api;
+        api.setBases(QString(), baseOf(server));
+        QTemporaryDir data;
+        ExerciseStore store(api, data.path());
+        // No copy on disk and nothing asked yet: not settled, so the Catalog page must not say "isn't here yet".
+        QVERIFY(!store.settled());
+        store.refresh();
+        QVERIFY(!store.settled());
+        QTRY_COMPARE(server.requests.size(), 1);
+        server.releaseHeld();
+        QTRY_VERIFY(store.settled());
+        // A later run reads the copy and is settled at once.
+        ExerciseStore again(api, data.path());
+        QVERIFY(again.settled());
+    }
+
+    void aFailedFirstRefreshIsSettledToo()
+    {
+        FakeServer server;
+        server.statuses[catalogPath] = 503;
+        Api api;
+        api.setBases(QString(), baseOf(server));
+        QTemporaryDir data;
+        ExerciseStore store(api, data.path());
+        store.refresh();
+        QTRY_VERIFY(store.settled());
+        QCOMPARE(store.count(), 0);
+    }
+
     void aFailedRefreshKeepsTheCopy()
     {
         QTemporaryDir data;
@@ -145,7 +179,7 @@ private slots:
         server.responses[catalogPath] = R"({"status":"error","message":"busy, try again"})";
         store.refresh();
         QTRY_VERIFY(!store.loading());
-        QCOMPARE(store.error(), QStringLiteral("busy, try again"));
+        QCOMPARE(store.error(), QStringLiteral("server"));
         QCOMPARE(store.count(), 2);
     }
 
@@ -164,7 +198,7 @@ private slots:
         server.responses[catalogPath] = R"({"status":"ok","data":{"version":"v2","exercises":"not a list"}})";
         store.refresh();
         QTRY_VERIFY(!store.loading());
-        QVERIFY(!store.error().isEmpty());
+        QCOMPARE(store.error(), QStringLiteral("bad_reply"));
         QCOMPARE(store.version(), QStringLiteral("v1"));
         QCOMPARE(store.count(), 2);
     }

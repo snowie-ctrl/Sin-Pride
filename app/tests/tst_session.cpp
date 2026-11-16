@@ -134,7 +134,6 @@ private slots:
         session.login("stub", "nope", QString());
         QTRY_COMPARE(failed.count(), 1);
         QCOMPARE(failed.first().at(0).toString(), QStringLiteral("invalid_credentials"));
-        QCOMPARE(failed.first().at(1).toString(), QStringLiteral("Wrong username or password"));
         QVERIFY(!session.authenticated());
         QVERIFY(!session.busy());
     }
@@ -151,7 +150,7 @@ private slots:
 
         session.login("newbie", "pw", "used-key");
         QTRY_COMPARE(failed.count(), 1);
-        QCOMPARE(failed.first().at(1).toString(), QStringLiteral("That key has been used or does not exist"));
+        QCOMPARE(failed.first().at(0).toString(), QStringLiteral("invalid_key"));
         QVERIFY(server.bodies.last().contains("\"key\":\"used-key\""));
     }
 
@@ -165,7 +164,48 @@ private slots:
         session.login("stub", "stub", QString());
         QTRY_COMPARE_WITH_TIMEOUT(failed.count(), 1, 10000);
         QCOMPARE(failed.first().at(0).toString(), QStringLiteral("network"));
-        QCOMPARE(failed.first().at(1).toString(), QStringLiteral("Could not reach the server"));
+    }
+
+    void aRefusedSignUpFormIsBadForm()
+    {
+        FakeServer server;
+        server.statuses["/api/pride/auth"] = 400;
+        server.responses["/api/pride/auth"] = R"({"status":"error","message":"a password is 8 to 256 characters"})";
+        Api api;
+        api.setBases(QString(), baseOf(server));
+        Session session(api);
+        QSignalSpy failed(&session, &Session::loginFailed);
+        session.login("newbie", "short", "key");
+        QTRY_COMPARE(failed.size(), 1);
+        QCOMPARE(failed.first().at(0).toString(), QStringLiteral("bad_form"));
+    }
+
+    void tooManyTriesIsTooMany()
+    {
+        FakeServer server;
+        server.statuses["/api/pride/auth"] = 429;
+        server.responses["/api/pride/auth"] = R"({"status":"error","message":"too many attempts"})";
+        Api api;
+        api.setBases(QString(), baseOf(server));
+        Session session(api);
+        QSignalSpy failed(&session, &Session::loginFailed);
+        session.login("stub", "whatever-long", "");
+        QTRY_COMPARE(failed.size(), 1);
+        QCOMPARE(failed.first().at(0).toString(), QStringLiteral("too_many"));
+    }
+
+    void anyOtherRefusalIsServer()
+    {
+        FakeServer server;
+        server.statuses["/api/pride/auth"] = 500;
+        server.responses["/api/pride/auth"] = R"({"status":"error","message":"KeyError: x"})";
+        Api api;
+        api.setBases(QString(), baseOf(server));
+        Session session(api);
+        QSignalSpy failed(&session, &Session::loginFailed);
+        session.login("stub", "whatever-long", "");
+        QTRY_COMPARE(failed.size(), 1);
+        QCOMPARE(failed.first().at(0).toString(), QStringLiteral("server"));
     }
 
     void aSecondSignInWhileBusyIsIgnored()
@@ -203,7 +243,6 @@ private slots:
         session.login("stub", "stub", QString());
         QTRY_COMPARE(failed.count(), 1);
         QCOMPARE(failed.first().at(0).toString(), QStringLiteral("bad_reply"));
-        QCOMPARE(failed.first().at(1).toString(), QStringLiteral("The server sent an unexpected answer"));
         QCOMPARE(succeeded.count(), 0);
         QVERIFY(!session.authenticated());
         QVERIFY(api.sessionToken().isEmpty());
@@ -311,7 +350,7 @@ private slots:
 
         session.removeDevice("f00dfeedf00dfeed");
         QTRY_COMPARE(failed.count(), 1);
-        QCOMPARE(failed.first().at(1).toString(), QStringLiteral("This device signs out instead"));
+        QCOMPARE(failed.first().at(1).toString(), QStringLiteral("this_device"));
     }
 
     void anIdThatIsNotADeviceAsksNothing()

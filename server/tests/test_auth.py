@@ -156,14 +156,15 @@ def test_signingOutNeedsASession(anonClient):
 
 
 def test_devicesAreNamedNeverByTheirFingerprint(client, useDb):
-    useDb(fetchone=[{"DeviceFingerprint": "here"}],
-          fetchall=[[{"Fingerprint": "here", "LastExpiry": datetime(2026, 12, 5, 8, 0)},
-                     {"Fingerprint": "there", "LastExpiry": None}]])
+    conn = useDb(fetchone=[{"DeviceFingerprint": "here"}],
+                 fetchall=[[{"Fingerprint": "here", "LastSignIn": datetime(2026, 11, 5, 8, 0)},
+                            {"Fingerprint": "there", "LastSignIn": None}]])
     rows = client.get(f"{A}/devices").get_json()["data"]
     here = deviceOf("here")
     assert rows[0] == {"id": here, "label": here[:8], "current": True, "lastSignIn": "2026-11-05T08:00:00Z"}
     assert rows[1]["current"] is False and rows[1]["lastSignIn"] is None
     assert "here" not in str(rows) and "there" not in str(rows)
+    assert "MAX(s.CreatedAt)" in conn.cur.executed[-1][0]
 
 
 def test_thisDeviceCannotBeRemoved(client, useDb):

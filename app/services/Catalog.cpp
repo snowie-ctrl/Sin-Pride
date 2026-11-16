@@ -2,6 +2,9 @@
 
 #include <algorithm>
 
+#include <QJsonArray>
+#include <QUrlQuery>
+
 #include "services/ExerciseStore.h"
 
 namespace {
@@ -16,6 +19,7 @@ const QHash<QString, QStringList> &wordOrder()
                     "triceps"}},
         {"equipment", {"bodyweight", "dumbbell", "barbell", "kettlebell", "bands", "cable", "machine", "bench",
                        "pull-up bar", "other"}},
+        {"mine", {"mine"}},
         {"measure", {"weight_reps", "reps", "time", "distance_time"}},
         {"level", {"beginner", "intermediate", "expert"}},
     };
@@ -28,6 +32,10 @@ QStringList valuesOf(const QVariantMap &exercise, const QString &facet)
         return exercise.value("primary").toStringList();
     if (facet == QLatin1String("equipment"))
         return exercise.value("equipment").toStringList();
+    if (facet == QLatin1String("mine")) {
+        return exercise.value("source").toString() == QLatin1String("own") ? QStringList{QStringLiteral("mine")}
+                                                                            : QStringList();
+    }
     return {exercise.value(facet).toString()};
 }
 
@@ -39,10 +47,10 @@ bool shown(const QVariantMap &exercise)
 } // namespace
 
 const QStringList Catalog::Facets = {QStringLiteral("muscle"), QStringLiteral("equipment"), QStringLiteral("measure"),
-                                     QStringLiteral("level")};
+                                     QStringLiteral("level"), QStringLiteral("mine")};
 
 
-Catalog::Catalog(ExerciseStore &store, QObject *parent) : QObject(parent), m_store(store)
+Catalog::Catalog(ExerciseStore &store, Api &api, QObject *parent) : QObject(parent), m_store(store), m_api(api)
 {
     connect(&m_store, &ExerciseStore::changed, this, &Catalog::rebuild);
     rebuild();
@@ -52,7 +60,7 @@ void Catalog::rebuild()
 {
     QHash<QString, QHash<QString, int>> tally;
     m_shownCount = 0;
-    for (const QVariantMap &exercise : m_store.exercises()) {
+    for (const QVariantMap &exercise : all()) {
         if (!shown(exercise))
             continue;
         ++m_shownCount;
@@ -98,7 +106,7 @@ QVariantMap Catalog::tileOf(const QVariantMap &exercise)
 void Catalog::filter()
 {
     QVariantList results;
-    for (const QVariantMap &exercise : m_store.exercises())
+    for (const QVariantMap &exercise : all())
         if (shown(exercise) && matches(exercise, m_chosen) && nameMatches(exercise.value("name").toString(), m_text))
             results.append(tileOf(exercise));
     m_results = results;
@@ -151,7 +159,7 @@ QVariantList Catalog::search(const QString &text, int limit) const
         return {};
     QVariantList starting;
     QVariantList containing;
-    for (const QVariantMap &exercise : m_store.exercises()) {
+    for (const QVariantMap &exercise : all()) {
         const QString name = exercise.value("name").toString();
         if (!shown(exercise) || !nameMatches(name, text))
             continue;
@@ -169,7 +177,7 @@ void Catalog::open(int id)
 
 QVariantMap Catalog::current() const
 {
-    return m_store.exercise(m_currentId);
+    return exercise(m_currentId);
 }
 
 QString Catalog::folded(const QString &text)
@@ -195,4 +203,157 @@ bool Catalog::nameMatches(const QString &name, const QString &text)
     squashed.remove(QLatin1Char(' '));
     return std::all_of(words.cbegin(), words.cend(),
                        [&](const QString &word) { return spaced.contains(word) || squashed.contains(word); });
+}
+
+bool Catalog::before(const QVariantMap &a, const QVariantMap &b)
+{
+    const int byName = QString::compare(a.value("name").toString(), b.value("name").toString(), Qt::CaseInsensitive);
+    return byName != 0 ? byName < 0 : a.value("id").toInt() < b.value("id").toInt();
+}
+
+QList<QVariantMap> Catalog::all() const
+{
+    QList<QVariantMap> merged = m_store.exercises();
+    merged.append(m_own);
+    std::stable_sort(merged.begin(), merged.end(), &Catalog::before);
+    return merged;
+}
+
+QVariantMap Catalog::exercise(int id) const
+{
+    for (const QVariantMap &own : m_own)
+        if (own.value("id").toInt() == id)
+            return own;
+    return m_store.exercise(id);
+}
+
+QVariantList Catalog::pick(const QString &text, const QStringList &equipment, bool everything, int limit) const
+{
+    QVariantList tiles;
+    for (const QVariantMap &exercise : all()) {
+        if (tiles.size() >= limit)
+            break;
+        if (!shown(exercise) || !nameMatches(exercise.value("name").toString(), text))
+            continue;
+        if (!everything) {
+            // Plan decision 20: every piece it needs is the person's own; bodyweight always is.
+            const QStringList needs = exercise.value("equipment").toStringList();
+            if (!std::all_of(needs.cbegin(), needs.cend(), [&](const QString &word) {
+                    return word == QLatin1String("bodyweight") || equipment.contains(word); }))
+                continue;
+        }
+        tiles.append(tileOf(exercise));
+    }
+    return tiles;
+}
+
+QVariantList Catalog::own() const
+{
+    QVariantList list;
+    for (const QVariantMap &exercise : m_own)
+        list.append(exercise);
+    return list;
+}
+
+void Catalog::takeOwn(const QVariantMap &exercise)
+{
+    const int id = exercise.value("id").toInt();
+    const auto at = std::find_if(m_own.begin(), m_own.end(),
+                                 [id](const QVariantMap &own) { return own.value("id").toInt() == id; });
+    if (at != m_own.end())
+        *at = exercise;
+    else
+        m_own.append(exercise);
+    std::stable_sort(m_own.begin(), m_own.end(), &Catalog::before);
+}
+
+void Catalog::ownFailure(const Api::Result &result)
+{
+    const QString code = refusalOf(result);
+    emit ownFailed(code, code == QLatin1String("invalid") || code == QLatin1String("limit")
+                             ? result.object.value("field").toString() : QString());
+}
+
+void Catalog::loadOwn()
+{
+    const int generation = m_ownGeneration;
+    m_ownLoading = true;
+    emit ownChanged();
+    m_api.get(QStringLiteral("/exercises"), QUrlQuery(), [this, generation](const Api::Result &result) {
+        if (generation != m_ownGeneration)
+            return;
+        m_ownLoading = false;
+        m_ownError = result.ok ? QString() : failureOf(result);
+        if (result.ok) {
+            m_own.clear();
+            for (const QJsonValue &value : result.object.value("data").toArray())
+                m_own.append(value.toObject().toVariantMap());
+            std::stable_sort(m_own.begin(), m_own.end(), &Catalog::before);
+        }
+        emit ownChanged();
+        if (result.ok)
+            rebuild();
+    });
+}
+
+void Catalog::saveOwn(const QVariantMap &exercise)
+{
+    const int generation = m_ownGeneration;
+    const int id = exercise.value("id").toInt();
+    QJsonObject body = QJsonObject::fromVariantMap(exercise);
+    body.remove(QStringLiteral("id"));
+    const auto done = [this, generation](const Api::Result &result) {
+        if (generation != m_ownGeneration)
+            return;
+        if (!result.ok) {
+            ownFailure(result);
+            return;
+        }
+        const QVariantMap saved = result.object.value("data").toObject().toVariantMap();
+        takeOwn(saved);
+        emit ownChanged();
+        rebuild();
+        emit ownSaved(saved.value("id").toInt());
+    };
+    if (id > 0)
+        m_api.put(QStringLiteral("/exercises/%1").arg(id), body, done);
+    else
+        m_api.post(QStringLiteral("/exercises"), body, done);
+}
+
+void Catalog::removeOwn(int id)
+{
+    const int generation = m_ownGeneration;
+    m_api.del(QStringLiteral("/exercises/%1").arg(id), [this, generation, id](const Api::Result &result) {
+        if (generation != m_ownGeneration)
+            return;
+        if (!result.ok) {
+            ownFailure(result);
+            return;
+        }
+        const QJsonObject data = result.object.value("data").toObject();
+        const bool hidden = data.value("hidden").toBool();
+        const auto at = std::find_if(m_own.begin(), m_own.end(),
+                                     [id](const QVariantMap &own) { return own.value("id").toInt() == id; });
+        if (at != m_own.end()) {
+            // Routines still use a hidden one, so it stays to be named, no longer shown.
+            if (hidden)
+                at->insert(QStringLiteral("removed"), true);
+            else
+                m_own.erase(at);
+        }
+        emit ownChanged();
+        rebuild();
+        emit ownRemoved(id, data.value("routinesTouched").toInt(), hidden);
+    });
+}
+
+void Catalog::resetOwn()
+{
+    ++m_ownGeneration;
+    m_own.clear();
+    m_ownLoading = false;
+    m_ownError.clear();
+    emit ownChanged();
+    rebuild();
 }

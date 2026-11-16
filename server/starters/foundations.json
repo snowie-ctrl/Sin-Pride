@@ -1,0 +1,25 @@
+{
+  "key": "foundations",
+  "order": 1,
+  "title": "Foundations",
+  "blurb": "Two full-body days that take turns. Every big movement, twice a week or so, nothing fancy.",
+  "forDays": [2, 3],
+  "days": {"2": [1, 4], "3": [0, 2, 4]},
+  "variants": [
+    {"name": "gym", "needs": ["barbell", "bench", "cable", "machine", "dumbbell"], "routines": [
+      {"title": "Full body A", "items": [{"exercise": "Barbell_Squat"}, {"exercise": "Barbell_Bench_Press_-_Medium_Grip"},
+        {"exercise": "Seated_Cable_Rows"}, {"exercise": "Lying_Leg_Curls"}, {"exercise": "Plank", "seconds": 30}]},
+      {"title": "Full body B", "items": [{"exercise": "Leg_Press"}, {"exercise": "Standing_Military_Press"},
+        {"exercise": "Wide-Grip_Lat_Pulldown"}, {"exercise": "Stiff-Legged_Dumbbell_Deadlift"}, {"exercise": "Dead_Bug"}]}]},
+    {"name": "dumbbell", "needs": ["dumbbell", "bench"], "routines": [
+      {"title": "Full body A", "items": [{"exercise": "Dumbbell_Squat"}, {"exercise": "Dumbbell_Bench_Press"},
+        {"exercise": "One-Arm_Dumbbell_Row"}, {"exercise": "Stiff-Legged_Dumbbell_Deadlift"}, {"exercise": "Plank", "seconds": 30}]},
+      {"title": "Full body B", "items": [{"exercise": "Dumbbell_Lunges"}, {"exercise": "Seated_Dumbbell_Press"},
+        {"exercise": "Bent_Over_Two-Dumbbell_Row"}, {"exercise": "Butt_Lift_Bridge"}, {"exercise": "Dead_Bug"}]}]},
+    {"name": "bodyweight", "needs": [], "routines": [
+      {"title": "Full body A", "items": [{"exercise": "Bodyweight_Squat"}, {"exercise": "Pushups"},
+        {"exercise": "Inverted_Row"}, {"exercise": "Butt_Lift_Bridge"}, {"exercise": "Plank", "seconds": 30}]},
+      {"title": "Full body B", "items": [{"exercise": "Bodyweight_Walking_Lunge"}, {"exercise": "Incline_Push-Up"},
+        {"exercise": "Superman", "seconds": 20}, {"exercise": "Single_Leg_Glute_Bridge"}, {"exercise": "Dead_Bug"}]}]}
+  ]
+}

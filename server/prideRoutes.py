@@ -2,13 +2,11 @@
 Pride's app routes at /api/pride: the reachability check, accounts (sign-in, sign-up with a login key, a device that
 signs itself in, sign-out, devices) and the exercise catalog with its pictures. docs/api.md is the contract for the
 desktop app and the iOS app. Every route needs a session (prideSession.py) unless PUBLIC_ROUTES names it, so a route
-added later cannot forget the check. What a person owns (profile, programs, workouts) arrives in prideUserRoutes.py in
-milestone 2.
+added later cannot forget the check. What a person owns (profile, programs, workouts) is in prideUserRoutes.py.
 """
 import hashlib
 import re
 import secrets
-from datetime import timedelta
 
 from flask import Blueprint, jsonify, request, send_file
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -178,15 +176,13 @@ def devices():
     uid = session.requestUID()
     with database() as (conn, cur):
         here = currentFingerprint(cur, uid)
-        cur.execute("SELECT d.Fingerprint, MAX(s.ExpiresAt) AS LastExpiry FROM Devices d "
+        cur.execute("SELECT d.Fingerprint, MAX(s.CreatedAt) AS LastSignIn FROM Devices d "
                     "LEFT JOIN Sessions s ON s.DeviceFingerprint = d.Fingerprint AND s.UserID = d.UserID "
                     "WHERE d.UserID = %s GROUP BY d.Fingerprint "
-                    "ORDER BY MAX(s.ExpiresAt) IS NULL, MAX(s.ExpiresAt) DESC, d.Fingerprint", (uid,))
+                    "ORDER BY MAX(s.CreatedAt) IS NULL, MAX(s.CreatedAt) DESC, d.Fingerprint", (uid,))
         rows = cur.fetchall()
     return ok([{"id": deviceId(r["Fingerprint"]), "label": deviceId(r["Fingerprint"])[:8],
-                "current": r["Fingerprint"] == here,
-                "lastSignIn": isoUtc(r["LastExpiry"] - timedelta(days=session.SESSION_DAYS)) if r["LastExpiry"] else None}
-               for r in rows])
+                "current": r["Fingerprint"] == here, "lastSignIn": isoUtc(r["LastSignIn"])} for r in rows])
 
 
 @prideBP.route("/devices/<wanted>", methods=["DELETE"])

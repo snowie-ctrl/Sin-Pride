@@ -32,8 +32,11 @@ class ExerciseStore : public QObject
     // Bumped whenever a picture lands (or may be asked for again), so bindings that call pictureUrl() are evaluated again.
     Q_PROPERTY(int pictureRevision READ pictureRevision NOTIFY picturesChanged)
     Q_PROPERTY(bool loading READ loading NOTIFY loadingChanged)
-    // Why the last refresh failed, in the server's words; empty after one that worked.
+    // Why the last refresh failed, as a code (network, server, bad_reply); empty after one that worked.
     Q_PROPERTY(QString error READ error NOTIFY loadingChanged)
+    // Whether the device knows where the catalog stands: a copy was read from disk, or a refresh has ended (either
+    // way). Until then the Catalog page says it is gathering, never that the catalog isn't here.
+    Q_PROPERTY(bool settled READ settled NOTIFY loadingChanged)
 
 public:
     static constexpr int Parallel = 4;
@@ -45,6 +48,7 @@ public:
     int pictureRevision() const { return m_pictureRevision; }
     bool loading() const { return m_loading; }
     QString error() const { return m_error; }
+    bool settled() const { return m_settled; }
     QString version() const { return m_version; }
     // Every exercise in the server's order (by name), hidden ones included, so old workouts can still name theirs.
     const QList<QVariantMap> &exercises() const { return m_exercises; }
@@ -81,6 +85,7 @@ private:
     int m_revision = 0;
     int m_pictureRevision = 0;
     bool m_loading = false;
+    bool m_settled = false;
     bool m_refreshAgain = false;
     QString m_error;
     QStringList m_queue;

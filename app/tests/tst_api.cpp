@@ -371,7 +371,7 @@ private slots:
         QTRY_VERIFY(done);
         QVERIFY(!seen.ok);
         QCOMPARE(seen.httpStatus, 502);
-        QCOMPARE(reasonOf(seen), QStringLiteral("HTTP 502"));
+        QCOMPARE(failureOf(seen), QStringLiteral("server"));
     }
 
     // ---- Whether the server answers (milestone 4) ----

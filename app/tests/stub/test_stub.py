@@ -14,7 +14,8 @@ SHAPE = {"id", "key", "source", "licence", "name", "category", "level", "measure
 
 @pytest.fixture
 def client(monkeypatch):
-    for name in ("STUB_NEW_DEVICE", "STUB_CATALOG_DOWN", "STUB_PICTURES_FAIL", "STUB_SLOW"):
+    for name in ("STUB_NEW_DEVICE", "STUB_CATALOG_DOWN", "STUB_PICTURES_FAIL", "STUB_SLOW", "STUB_SEED", "STUB_INTRO",
+                 "STUB_TODAY"):
         monkeypatch.delenv(name, raising=False)
     # The fixture, even once a real snapshot sits in snapshot/, so these checks never depend on it.
     monkeypatch.setenv("STUB_SNAPSHOT", str(stub.HERE / "fixture"))
@@ -99,3 +100,105 @@ def test_theSwitchesBreakWhatTheySay(client, monkeypatch):
     monkeypatch.setenv("STUB_PICTURES_FAIL", "1")
     name = json.loads((stub.HERE / "fixture" / "catalog.json").read_text(encoding="utf-8"))["exercises"][0]["pictures"][0]
     assert client.get(API + f"/pictures/{name}", headers=AUTH).status_code == 404
+
+
+def get(client, path):
+    return client.get(API + path, headers=AUTH)
+
+
+def send(client, method, path, body=None):
+    return getattr(client, method)(API + path, headers=AUTH, json=body if body is not None else {})
+
+
+def test_theProfileIsReadAndChanged(client):
+    profile = get(client, "/profile").get_json()["data"]
+    assert profile["units"] == "lb" and profile["introState"] == "done"
+    changed = send(client, "put", "/profile", {"units": "kg", "equipment": ["bench", "dumbbell"]}).get_json()["data"]
+    assert (changed["upperIncrement"], changed["equipment"]) == (2.5, ["dumbbell", "bench"])
+    refused = send(client, "put", "/profile", {"daysPerWeek": 9})
+    assert refused.status_code == 400 and refused.get_json()["field"] == "daysPerWeek"
+
+
+def test_aSignUpStartsWithTheIntroPending(client):
+    token = client.post(API + "/auth", json={"username": "newbie", "password": "long-enough", "fingerprint": "x",
+                                             "key": "stub-key"}).get_json()["token"]
+    profile = client.get(API + "/profile", headers={"X-Session-Token": token}).get_json()["data"]
+    assert profile["introState"] == "pending"
+
+
+def test_programsRoutinesAndItemsAnswerTheWholeProgram(client):
+    program = send(client, "post", "/programs", {"title": "Mine"}).get_json()["data"]
+    assert program["active"] is True and program["routines"] == []
+    program = send(client, "post", "/routines", {"programId": program["id"], "title": "A"}).get_json()["data"]
+    program = send(client, "post", "/routines", {"programId": program["id"], "title": "B"}).get_json()["data"]
+    a, b = (r["id"] for r in program["routines"])
+    program = send(client, "post", "/routine-items", {"routineId": a, "exerciseId": 1}).get_json()["data"]
+    item = program["routines"][0]["items"][0]
+    assert (item["sets"], item["repsMin"], item["repsMax"]) == (3, 10, 15)
+    program = send(client, "post", "/routines/reorder", {"programId": program["id"], "order": [b, a]}).get_json()["data"]
+    assert [r["title"] for r in program["routines"]] == ["B", "A"]
+    program = send(client, "put", f"/programs/{program['id']}/days", {"days": [4, 0]}).get_json()["data"]
+    assert program["days"] == [0, 4]
+    bad = send(client, "put", f"/routine-items/{item['id']}", {**item, "repsMin": 20})
+    assert bad.status_code == 400 and bad.get_json()["field"] == "repsMax"
+    assert send(client, "get", "/programs/999").status_code == 404
+
+
+def test_adoptingAStarterAgainstTheFixtureLeavesTheMissingOut(client):
+    starters = get(client, "/starters").get_json()["data"]
+    assert [s["key"] for s in starters] == ["foundations", "upperLower", "pushPullLegs"]
+    assert "Barbell_Squat" not in starters[0]["missing"] and starters[0]["missing"]
+    program = send(client, "post", "/starters/foundations/adopt").get_json()["data"]
+    assert program["active"] is True and program["starterKey"] == "foundations"
+    assert all(i["exerciseId"] for r in program["routines"] for i in r["items"])
+
+
+def test_ownExercisesAreAddedAndDeleted(client):
+    own = send(client, "post", "/exercises", {"name": "Sandbag Carry", "measure": "distance_time",
+                                              "primary": ["forearms"], "equipment": ["other"]}).get_json()["data"]
+    assert own["source"] == "own" and own["region"] == "upper"
+    assert [e["name"] for e in get(client, "/exercises").get_json()["data"]] == ["Sandbag Carry"]
+    gone = send(client, "delete", f"/exercises/{own['id']}").get_json()["data"]
+    assert gone == {"routinesTouched": 0, "hidden": False}
+    assert get(client, "/exercises").get_json()["data"] == []
+
+
+def test_todayWithASeededProgram(client, monkeypatch):
+    monkeypatch.setenv("STUB_SEED", "1")
+    monkeypatch.setenv("STUB_TODAY", "2026-11-18")
+    stub.reset()
+    data = get(client, "/today?date=2026-11-18").get_json()["data"]
+    assert data["program"]["title"] == "Upper/Lower"
+    assert data["nextUp"]["title"] == "Lower"          # the seeded workout was Upper
+    assert data["week"][0]["done"] is True
+    assert get(client, "/today").status_code == 400
+
+
+def test_theIntroSwitchLeavesTheStubReadersIntroPending(client, monkeypatch):
+    monkeypatch.setenv("STUB_INTRO", "1")
+    stub.reset()
+    assert get(client, "/profile").get_json()["data"]["introState"] == "pending"
+
+
+def test_anItemOfARemovedCatalogExerciseCanStillBeEdited(client):
+    program = send(client, "post", "/programs", {"title": "Mine"}).get_json()["data"]
+    program = send(client, "post", "/routines", {"programId": program["id"], "title": "A"}).get_json()["data"]
+    program = send(client, "post", "/routine-items", {"routineId": program["routines"][0]["id"],
+                                                      "exerciseId": 1}).get_json()["data"]
+    item = program["routines"][0]["items"][0]
+    # The catalog drops the exercise after the routine took it; the routine keeps naming it (plan decision 19).
+    next(e for e in stub.state["catalog"]["exercises"] if e["id"] == 1)["removed"] = True
+    answer = send(client, "put", f"/routine-items/{item['id']}", {**item, "sets": 4})
+    assert answer.status_code == 200 and answer.get_json()["data"]["routines"][0]["items"][0]["sets"] == 4
+
+
+def test_deletingAnOwnExerciseStampsTheProgramsItChanged(client, monkeypatch):
+    monkeypatch.setattr(stub, "stamp", lambda: "T-new")
+    own = send(client, "post", "/exercises", {"name": "Sandbag Carry", "measure": "distance_time",
+                                              "primary": ["forearms"], "equipment": ["other"]}).get_json()["data"]
+    program = send(client, "post", "/programs", {"title": "Mine"}).get_json()["data"]
+    program = send(client, "post", "/routines", {"programId": program["id"], "title": "A"}).get_json()["data"]
+    send(client, "post", "/routine-items", {"routineId": program["routines"][0]["id"], "exerciseId": own["id"]})
+    monkeypatch.setattr(stub, "stamp", lambda: "T-deleted")
+    send(client, "delete", f"/exercises/{own['id']}")
+    assert get(client, f"/programs/{program['id']}").get_json()["data"]["updatedAt"] == "T-deleted"

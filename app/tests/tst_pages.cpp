@@ -4,6 +4,7 @@
 #include <QDir>
 #include <QFile>
 #include <QImage>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QQmlApplicationEngine>
@@ -14,6 +15,7 @@
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QUrlQuery>
 #include <QtQml/QQmlExtensionPlugin>
 
 #include <memory>
@@ -25,6 +27,8 @@
 #include "services/Catalog.h"
 #include "services/ExerciseStore.h"
 #include "services/Nav.h"
+#include "services/Profile.h"
+#include "services/Programs.h"
 #include "services/Session.h"
 #include "services/Wiring.h"
 
@@ -61,6 +65,35 @@ static QByteArray catalogJson()
   "steps":["Hang.","Pull."],"pictures":[]}]}})";
 }
 
+static QByteArray profileJson(const char *intro, const char *equipment = R"(["barbell","bodyweight"])")
+{
+    return QByteArray(R"({"status":"ok","data":{"units":"lb","goal":"general","daysPerWeek":3,"upperIncrement":5.0,)"
+                      R"("lowerIncrement":10.0,"weekStart":"mon","introState":")") + intro + R"(","equipment":)"
+           + equipment + "}}";
+}
+
+static QByteArray startersJson(bool withItems = true)
+{
+    const QByteArray items = withItems
+        ? R"([{"exerciseId":1,"name":"Barbell Curl","measure":"weight_reps","sets":3,"repsMin":8,"repsMax":12,"targetSeconds":null,"restSeconds":90}])"
+        : "[]";
+    return R"({"status":"ok","data":[
+ {"key":"foundations","title":"Foundations","blurb":"Two full-body days.","suggested":false,"variant":"dumbbell",
+  "days":[0,2,4],"routines":[{"title":"Full body A","items":)" + items + R"(}],"missing":[]},
+ {"key":"upperLower","title":"Upper/Lower","blurb":"Upper one day, legs the next.","suggested":true,"variant":"dumbbell",
+  "days":[0,1,3,4],"routines":[{"title":"Upper","items":)" + items + R"(},{"title":"Lower","items":)" + items + R"(}],
+  "missing":["Plank"]}]})";
+}
+
+static QByteArray programJson(int id = 5)
+{
+    return QByteArray(R"({"status":"ok","data":{"id":)") + QByteArray::number(id) + R"(,"title":"Upper/Lower","active":true,
+ "starterKey":"upperLower","days":[0,1,3,4],"updatedAt":"2026-11-15T09:00:00Z","routines":[
+ {"id":50,"title":"Upper","items":[{"id":500,"exerciseId":1,"sets":3,"repsMin":8,"repsMax":12,"targetWeight":135,
+  "targetUnit":"lb","targetSeconds":null,"targetDistance":null,"distanceUnit":null,"restSeconds":90,"note":null}]},
+ {"id":51,"title":"Lower","items":[]}]}})";
+}
+
 static QByteArray pictureBytes()
 {
     QImage image(32, 24, QImage::Format_RGB32);
@@ -88,6 +121,8 @@ class TestPages : public QObject
     std::unique_ptr<Session> session;
     std::unique_ptr<ExerciseStore> exercises;
     std::unique_ptr<Catalog> catalog;
+    std::unique_ptr<Profile> profile;
+    std::unique_ptr<Programs> programs;
     // Declared last, so it is destroyed first: pages go before the services they call.
     std::unique_ptr<QQmlApplicationEngine> engine;
 
@@ -132,12 +167,41 @@ class TestPages : public QObject
         return found;
     }
 
+    // A long page (Settings) holds controls below the window's edge; a click there would miss. Scrolls every Flickable
+    // above the item just far enough to show it.
+    static void scrollIntoView(QQuickItem *item)
+    {
+        for (QQuickItem *flick = item->parentItem(); flick; flick = flick->parentItem()) {
+            const auto content = qvariant_cast<QQuickItem *>(flick->property("contentItem"));
+            if (!content || !flick->property("contentY").isValid() || !flick->property("contentHeight").isValid())
+                continue;
+            const qreal top = item->mapToItem(content, QPointF(0, 0)).y();
+            const qreal viewTop = flick->property("contentY").toReal();
+            if (top >= viewTop && top + item->height() <= viewTop + flick->height())
+                continue;
+            const qreal farthest = qMax<qreal>(0, flick->property("contentHeight").toReal() - flick->height());
+            flick->setProperty("contentY", qBound<qreal>(0, top - 20, farthest));
+        }
+    }
+
+    // A page lays itself out in the frame after it appears; tests that map an item to the window wait for that first.
+    void settle()
+    {
+        QSignalSpy framed(window(), &QQuickWindow::frameSwapped);
+        window()->update();
+        framed.wait(250);
+    }
+
     void click(QQuickItem *item)
     {
         QVERIFY(item);
         // A page lays itself out in the frame after it appears; without this wait a click now and then landed beside
-        // its target on a busy machine (Gluttony's lesson).
+        // its target on a busy machine (Gluttony's lesson). The item is scrolled into view only after that layout,
+        // and given a frame more to settle there.
         QSignalSpy framed(window(), &QQuickWindow::frameSwapped);
+        window()->update();
+        framed.wait(250);
+        scrollIntoView(item);
         window()->update();
         framed.wait(250);
         const QPointF centre = item->mapToScene(QPointF(item->width() / 2, item->height() / 2));
@@ -172,6 +236,25 @@ class TestPages : public QObject
         return {};
     }
 
+    // By method too, for routes that answer a GET and a PUT.
+    QList<QUrl> requestsTo(const char *method, const QString &route) const
+    {
+        QList<QUrl> found;
+        for (int i = 0; i < server->requests.size(); ++i)
+            if (server->methods[i] == method && server->requests[i].path() == path(route.toUtf8().constData()))
+                found << server->requests[i];
+        return found;
+    }
+
+    QJsonObject lastBodyTo(const char *method, const QString &route) const
+    {
+        for (int i = server->requests.size() - 1; i >= 0; --i)
+            if (server->methods[i] == method && server->requests[i].path() == path(route.toUtf8().constData())
+                && !server->bodies[i].isEmpty())
+                return QJsonDocument::fromJson(server->bodies[i]).object();
+        return {};
+    }
+
     // The app as main.cpp builds it; the device signs itself in at once unless a test answers otherwise.
     void start()
     {
@@ -182,18 +265,55 @@ class TestPages : public QObject
         context->setContextProperty("Session", session.get());
         context->setContextProperty("ExerciseStore", exercises.get());
         context->setContextProperty("Catalog", catalog.get());
+        context->setContextProperty("Profile", profile.get());
+        context->setContextProperty("Programs", programs.get());
         engine->loadFromModule("Pride", "Main");
         QVERIFY(window());
         window()->resize(1600, 1000);
         session->identifyDevice();
     }
 
-    // Signed in and on the Catalog, the catalog arrived.
-    void startSignedIn()
+    // Signed in and on Today, for the Today page's tests.
+    void startOnToday()
     {
         start();
+        QTRY_VERIFY(findVisible("todayPage"));
+    }
+
+    // Signed in and on the Catalog, the catalog arrived. Signing in lands on Today, so these tests ask for the
+    // Catalog as the start page.
+    void startSignedIn()
+    {
+        nav->setStartPage("catalog-page");
+        start();
         QTRY_VERIFY(findVisible("catalogPage"));
-        QTRY_COMPARE(catalog->shownCount(), 3);
+        // Own exercises, when a test has some, add to the three the catalog holds.
+        QTRY_VERIFY(catalog->shownCount() >= 3);
+    }
+
+    // A new account, intro pending; PUT /profile answers done, as the server would once the intro is finished.
+    void startInTheIntro()
+    {
+        server->responses[path("/profile")] = profileJson("pending", "[]");
+        server->methodResponses["PUT " + path("/profile")] = profileJson("done", R"(["dumbbell","bodyweight","bench"])");
+        server->responses[path("/starters")] = startersJson();
+        start();
+        QTRY_VERIFY(findVisible("introPage"));
+    }
+
+    void walkToTheStarter()
+    {
+        click(find("introNext"));
+        QTRY_VERIFY(findVisible("introDays-4"));
+        click(find("introDays-4"));
+        click(find("introNext"));
+        QTRY_VERIFY(findVisible("introPreset-dumbbells"));
+        click(find("introPreset-dumbbells"));
+        click(find("introNext"));
+        QTRY_VERIFY(findVisible("introGoal-muscle"));
+        click(find("introGoal-muscle"));
+        click(find("introNext"));
+        QTRY_VERIFY(findVisible("introStarterTitle"));
     }
 
 private slots:
@@ -214,6 +334,14 @@ private slots:
         server = std::make_unique<FakeServer>();
         server->responses[path("/device/identify")] = signedIn;
         server->responses[path("/catalog")] = catalogJson();
+        server->responses[path("/profile")] = profileJson("done");
+        server->responses[path("/programs")] = R"({"status":"ok","data":[]})";
+        server->responses[path("/today")] = R"({"status":"ok","data":{"program":null,"nextUp":null,"plannedDay":null,"week":[
+ {"date":"2026-11-16","weekday":0,"planned":false,"done":false},{"date":"2026-11-17","weekday":1,"planned":false,"done":false},
+ {"date":"2026-11-18","weekday":2,"planned":false,"done":false},{"date":"2026-11-19","weekday":3,"planned":false,"done":false},
+ {"date":"2026-11-20","weekday":4,"planned":false,"done":false},{"date":"2026-11-21","weekday":5,"planned":false,"done":false},
+ {"date":"2026-11-22","weekday":6,"planned":false,"done":false}]}})";
+        server->responses[path("/exercises")] = R"({"status":"ok","data":[]})";
         // A fresh data folder each test: no account and no catalog copy carry over.
         dataDir = dir.filePath(QStringLiteral("data-%1").arg(++runs));
         preferences = std::make_unique<Preferences>();
@@ -223,13 +351,18 @@ private slots:
         accounts = std::make_unique<AccountStore>(dataDir);
         session = std::make_unique<Session>(*api);
         exercises = std::make_unique<ExerciseStore>(*api, dataDir);
-        catalog = std::make_unique<Catalog>(*exercises);
-        wireServices(*session, *accounts, *exercises, *catalog);
+        catalog = std::make_unique<Catalog>(*exercises, *api);
+        profile = std::make_unique<Profile>(*api);
+        programs = std::make_unique<Programs>(*api);
+        programs->setToday(QDate(2026, 11, 17));
+        wireServices(*session, *accounts, *exercises, *catalog, *profile, *programs);
     }
 
     void cleanup()
     {
         engine.reset();
+        programs.reset();
+        profile.reset();
         catalog.reset();
         exercises.reset();
         session.reset();
@@ -242,13 +375,467 @@ private slots:
 
     // ---- Sign-in and the shell ----
 
-    void aKnownDeviceGoesStraightToTheCatalog()
+    void aKnownDeviceLandsOnTodayAndLoadsWhatIsTheirs()
     {
         start();
-        QTRY_VERIFY(findVisible("catalogPage"));
-        QVERIFY(findVisible("railCatalog"));
-        // Signing in asks for the catalog.
-        QTRY_COMPARE(requestsTo("/catalog").size(), 1);
+        QTRY_VERIFY(findVisible("navShell"));
+        QCOMPARE(nav->currentPage(), QStringLiteral("today-page"));
+        QTRY_VERIFY(findVisible("todayPage"));
+        for (const char *route : {"/catalog", "/profile", "/programs", "/today", "/exercises"})
+            QTRY_COMPARE(requestsTo(route).size(), 1);
+    }
+
+    static QByteArray todayJson(const char *items, const char *planned = R"("2026-11-19")")
+    {
+        return QByteArray(R"({"status":"ok","data":{"program":{"id":5,"title":"Upper/Lower"},
+ "nextUp":{"routineId":51,"title":"Lower","items":)") + items + R"(},"plannedDay":)" + planned + R"(,"week":[
+ {"date":"2026-11-16","weekday":0,"planned":false,"done":true},{"date":"2026-11-17","weekday":1,"planned":false,"done":false},
+ {"date":"2026-11-18","weekday":2,"planned":false,"done":false},{"date":"2026-11-19","weekday":3,"planned":true,"done":false},
+ {"date":"2026-11-20","weekday":4,"planned":true,"done":false},{"date":"2026-11-21","weekday":5,"planned":false,"done":false},
+ {"date":"2026-11-22","weekday":6,"planned":false,"done":false}]}})";
+    }
+
+    static const char *curlItem()
+    {
+        return R"([{"id":510,"exerciseId":1,"sets":3,"repsMin":8,"repsMax":12,"targetWeight":135,"targetUnit":"lb",
+  "targetSeconds":null,"targetDistance":null,"distanceUnit":null,"restSeconds":90,"note":null}])";
+    }
+
+    // ---- Today ----
+
+    void todayShowsNextUpWithItsTargets()
+    {
+        server->responses[path("/today")] = todayJson(curlItem());
+        startOnToday();
+        QTRY_VERIFY(findVisible("nextUpCard"));
+        QCOMPARE(find("nextUpTitle")->property("text").toString(), QStringLiteral("Lower"));
+        QCOMPARE(find("nextUpWhen")->property("text").toString(), QStringLiteral("· planned for Thursday"));
+        QTRY_COMPARE(countVisible("todayItem"), 1);
+        QCOMPARE(find("todayItemName")->property("text").toString(), QStringLiteral("Barbell Curl"));
+        QCOMPARE(find("todayItemTarget")->property("text").toString(), QStringLiteral("3 × 8–12 · 135 lb"));
+        QVERIFY(!findVisible("todayItemGone"));
+    }
+
+    void withNoPlannedDaysItIsWheneverYoureReady()
+    {
+        server->responses[path("/today")] = todayJson(curlItem(), "null");
+        startOnToday();
+        QTRY_COMPARE(find("nextUpWhen")->property("text").toString(), QStringLiteral("· whenever you're ready"));
+    }
+
+    void theWeekStripShowsDoneAndPlannedAndNeverAMiss()
+    {
+        server->responses[path("/today")] = todayJson(curlItem());
+        startOnToday();
+        QTRY_VERIFY(findVisible("dayCell-0"));
+        QVERIFY(find("dayCell-0")->property("done").toBool());
+        QVERIFY(find("dayCell-1")->property("isToday").toBool());
+        QVERIFY(find("dayCell-3")->property("planned").toBool());
+        // Wednesday is neither done nor planned: no marker at all, and no word for it.
+        QVERIFY(!findIn(find("dayCell-2"), "dayMarker", true));
+    }
+
+    void todayAsksWithTheAppsOwnDate()
+    {
+        startOnToday();
+        QTRY_VERIFY(!requestsTo("/today").isEmpty());
+        QCOMPARE(QUrlQuery(requestsTo("/today").last()).queryItemValue("date"), QStringLiteral("2026-11-17"));
+    }
+
+    void withNoProgramTodayOffersTheIntroAndAnEmptyProgram()
+    {
+        server->methodResponses["POST " + path("/programs")] = programJson();
+        startOnToday();
+        QTRY_VERIFY(findVisible("noProgramCard"));
+        QVERIFY(findVisible("todayShowIntro"));
+        click(find("todayEmptyProgram"));
+        QTRY_COMPARE(lastBodyTo("POST", "/programs"), QJsonObject({{"title", "My program"}}));
+        QTRY_COMPARE(nav->currentPage(), QStringLiteral("programs-page"));
+    }
+
+    void programsButNoneActiveAsksToPickOne()
+    {
+        server->responses[path("/programs")] = R"({"status":"ok","data":[{"id":6,"title":"Mine","active":false,
+ "starterKey":null,"days":[],"routineCount":0,"updatedAt":"2026-11-14T09:00:00Z"}]})";
+        startOnToday();
+        QTRY_VERIFY(findVisible("pickProgramCard"));
+        QVERIFY(!findVisible("noProgramCard"));
+    }
+
+    void aRemovedExerciseIsNamedAndMarked()
+    {
+        server->responses[path("/today")] = todayJson(R"([{"id":511,"exerciseId":9,"sets":3,"repsMin":8,"repsMax":12,
+ "targetWeight":null,"targetUnit":null,"targetSeconds":null,"targetDistance":null,"distanceUnit":null,"restSeconds":null,"note":null}])");
+        startOnToday();
+        QTRY_COMPARE(countVisible("todayItem"), 1);
+        QCOMPARE(find("todayItemName")->property("text").toString(), QStringLiteral("Old Row"));
+        QVERIFY(findVisible("todayItemGone"));
+    }
+
+    void noLogButtonOrCrownsYet()
+    {
+        server->responses[path("/today")] = todayJson(curlItem());
+        startOnToday();
+        QTRY_VERIFY(findVisible("nextUpCard"));
+        QVERIFY(!find("logThisWorkout"));
+        QVERIFY(!find("crownsRow"));
+    }
+
+    static QByteArray twoPrograms()
+    {
+        return R"({"status":"ok","data":[
+ {"id":5,"title":"Upper/Lower","active":true,"starterKey":"upperLower","days":[0,1,3,4],"routineCount":2,"updatedAt":"2026-11-15T09:00:00Z"},
+ {"id":6,"title":"Mine","active":false,"starterKey":null,"days":[],"routineCount":0,"updatedAt":"2026-11-14T09:00:00Z"}]})";
+    }
+
+    void startOnPrograms()
+    {
+        server->responses[path("/programs")] = twoPrograms();
+        server->responses[path("/programs/5")] = programJson();
+        start();
+        QTRY_VERIFY(findVisible("todayPage"));
+        nav->navigateTo("programs-page");
+        QTRY_VERIFY(findVisible("programsPage"));
+        QTRY_COMPARE(countVisible("routineRow"), 2);
+    }
+
+    // ---- Programs ----
+
+    void theListMarksTheActiveProgramAndOpensIt()
+    {
+        startOnPrograms();
+        QCOMPARE(countVisible("programRow"), 2);
+        QCOMPARE(countVisible("programRowActive"), 1);
+        QCOMPARE(find("programTitleField")->property("text").toString(), QStringLiteral("Upper/Lower"));
+        QVERIFY(!findVisible("programActivate"));
+    }
+
+    void creatingAProgramOpensIt()
+    {
+        startOnPrograms();
+        server->methodResponses["POST " + path("/programs")] = programJson(7);
+        click(find("newProgramField"));
+        type("Summer");
+        click(find("newProgramButton"));
+        QTRY_COMPARE(lastBodyTo("POST", "/programs"), QJsonObject({{"title", "Summer"}}));
+        QTRY_COMPARE(programs->currentId(), 7);
+    }
+
+    void aBlankNameIsCaughtBeforeSending()
+    {
+        startOnPrograms();
+        click(find("newProgramButton"));
+        QTRY_VERIFY(findVisible("programsError"));
+        QVERIFY(requestsTo("POST", "/programs").isEmpty());
+    }
+
+    void renamingOnEnter()
+    {
+        startOnPrograms();
+        server->methodResponses["PUT " + path("/programs/5")] = programJson();
+        click(find("programTitleField"));
+        QTest::keyClick(window(), Qt::Key_A, Qt::ControlModifier);
+        type("UL");
+        QTest::keyClick(window(), Qt::Key_Return);
+        QTRY_COMPARE(lastBodyTo("PUT", "/programs/5"), QJsonObject({{"title", "UL"}}));
+    }
+
+    void theTitleFieldStillFollowsTheOpenProgramAfterARefusedRename()
+    {
+        startOnPrograms();
+        QByteArray mine = programJson(6);
+        mine.replace("Upper/Lower", "Mine");
+        mine.replace(R"("active":true)", R"("active":false)");
+        server->responses[path("/programs/6")] = mine;
+        click(find("programTitleField"));
+        QTest::keyClick(window(), Qt::Key_A, Qt::ControlModifier);
+        QTest::keyClick(window(), Qt::Key_Space);
+        QTest::keyClick(window(), Qt::Key_Return);
+        QTRY_VERIFY(findVisible("programsError"));
+        programs->open(6);
+        QTRY_COMPARE(find("programTitleField")->property("text").toString(), QStringLiteral("Mine"));
+    }
+
+    void aDayChipSendsTheWholeSet()
+    {
+        startOnPrograms();
+        server->methodResponses["PUT " + path("/programs/5/days")] = programJson();
+        click(find("day-2"));
+        QTRY_COMPARE(lastBodyTo("PUT", "/programs/5/days").value("days").toArray(), QJsonArray({0, 1, 2, 3, 4}));
+    }
+
+    void addingARoutine()
+    {
+        startOnPrograms();
+        server->methodResponses["POST " + path("/routines")] = programJson();
+        click(find("newRoutineField"));
+        type("Arms");
+        click(find("newRoutineButton"));
+        QTRY_COMPARE(lastBodyTo("POST", "/routines"), QJsonObject({{"programId", 5}, {"title", "Arms"}}));
+    }
+
+    void deletingAProgramAsksFirst()
+    {
+        startOnPrograms();
+        server->methodResponses["DELETE " + path("/programs/5")] = R"({"status":"ok","data":[]})";
+        click(find("programDelete"));
+        QTRY_VERIFY(findVisible("confirmDialog"));
+        click(find("confirmNo"));
+        QTRY_VERIFY(!findVisible("confirmDialog"));
+        QVERIFY(requestsTo("DELETE", "/programs/5").isEmpty());
+        click(find("programDelete"));
+        QTRY_VERIFY(findVisible("confirmYes"));
+        click(find("confirmYes"));
+        QTRY_COMPARE(requestsTo("DELETE", "/programs/5").size(), 1);
+        QTRY_COMPARE(programs->currentId(), 0);
+    }
+
+    void followingAndDuplicatingAnotherProgram()
+    {
+        startOnPrograms();
+        QByteArray mine = programJson(6);
+        mine.replace(R"("active":true)", R"("active":false)");
+        server->responses[path("/programs/6")] = mine;
+        server->methodResponses["POST " + path("/programs/6/activate")] = twoPrograms();
+        server->methodResponses["POST " + path("/programs/6/duplicate")] = programJson(8);
+        programs->open(6);
+        QTRY_VERIFY(findVisible("programActivate"));
+        click(find("programActivate"));
+        QTRY_COMPARE(requestsTo("POST", "/programs/6/activate").size(), 1);
+        click(find("programDuplicate"));
+        QTRY_COMPARE(requestsTo("POST", "/programs/6/duplicate").size(), 1);
+    }
+
+    void altDownMovesARoutine()
+    {
+        startOnPrograms();
+        server->methodResponses["POST " + path("/routines/reorder")] = programJson();
+        click(find("routineTitle"));
+        QTest::keyClick(window(), Qt::Key_Down, Qt::AltModifier);
+        QTRY_COMPARE(lastBodyTo("POST", "/routines/reorder"),
+                     QJsonObject({{"programId", 5}, {"order", QJsonArray{51, 50}}}));
+    }
+
+    void draggingTheGripMovesARoutine()
+    {
+        startOnPrograms();
+        server->methodResponses["POST " + path("/routines/reorder")] = programJson();
+        settle();
+        settle();
+        QQuickItem *grip = find("routineGrip");
+        QVERIFY(grip);
+        QQuickItem *row = find("routineRow");
+        const QPoint from = grip->mapToScene(QPointF(grip->width() / 2, grip->height() / 2)).toPoint();
+        const QPoint to = from + QPoint(0, int(row->height() * 1.5));
+        QTest::mousePress(window(), Qt::LeftButton, Qt::NoModifier, from);
+        for (int step = 1; step <= 10; ++step)
+            QTest::mouseMove(window(), from + (to - from) * step / 10, 20);
+        QTest::mouseRelease(window(), Qt::LeftButton, Qt::NoModifier, to);
+        QTRY_COMPARE(lastBodyTo("POST", "/routines/reorder").value("order").toArray(), QJsonArray({51, 50}));
+    }
+
+    void editOpensTheRoutineEditor()
+    {
+        startOnPrograms();
+        click(find("routineEdit"));
+        QTRY_COMPARE(nav->currentPage(), QStringLiteral("routine-page"));
+        QCOMPARE(programs->currentRoutineId(), 50);
+    }
+
+    void aProgramGoneElsewhereClosesAndSaysSo()
+    {
+        startOnPrograms();
+        server->methodStatuses["PUT " + path("/programs/5")] = 404;
+        server->methodResponses["PUT " + path("/programs/5")] = R"({"status":"error","message":"not found"})";
+        server->statuses[path("/programs/5")] = 404;      // the re-fetch confirms the program is gone
+        click(find("programTitleField"));
+        QTest::keyClick(window(), Qt::Key_A, Qt::ControlModifier);
+        type("UL");
+        QTest::keyClick(window(), Qt::Key_Return);
+        QTRY_VERIFY(findVisible("programsNotice"));
+        QVERIFY(!findVisible("programTitleField"));
+    }
+
+    // ---- The shell and Settings ----
+
+    void theRailHasTodayProgramsCatalogAndSettings()
+    {
+        startSignedIn();
+        for (const char *name : {"railToday", "railPrograms", "railCatalog", "railSettings", "railSignOut"})
+            QVERIFY2(findVisible(name), name);
+        click(find("railSettings"));
+        QTRY_VERIFY(findVisible("settingsPage"));
+    }
+
+    void settingsShowsTheProfileAndSavesAPickAtOnce()
+    {
+        startSignedIn();
+        nav->navigateTo("settings-page");
+        QTRY_VERIFY(findVisible("settingsPage"));
+        QTRY_COMPARE(find("units-lb")->property("chosen").toBool(), true);
+        server->methodResponses["PUT " + path("/profile")] = profileJson("done");
+        click(find("units-kg"));
+        QTRY_COMPARE(requestsTo("PUT", "/profile").size(), 1);
+        QCOMPARE(lastBodyTo("PUT", "/profile"), QJsonObject({{"units", "kg"}}));
+    }
+
+    void anIncrementIsCheckedBeforeItIsSaved()
+    {
+        startSignedIn();
+        nav->navigateTo("settings-page");
+        QTRY_VERIFY(findVisible("upperIncrementField"));
+        click(find("upperIncrementField"));
+        QTest::keyClick(window(), Qt::Key_A, Qt::ControlModifier);
+        type("0.3");
+        QTest::keyClick(window(), Qt::Key_Return);
+        QTRY_VERIFY(findVisible("settingsError"));
+        QCOMPARE(find("settingsError")->property("text").toString(), QStringLiteral("An increment is 0.25 to 100, in steps of 0.25"));
+        QVERIFY(requestsTo("PUT", "/profile").isEmpty());
+    }
+
+    void anEquipmentChipSendsTheWholeList()
+    {
+        startSignedIn();
+        nav->navigateTo("settings-page");
+        QTRY_VERIFY(findVisible("equipment-dumbbell"));
+        click(find("equipment-dumbbell"));
+        QTRY_COMPARE(requestsTo("PUT", "/profile").size(), 1);
+        QCOMPARE(lastBodyTo("PUT", "/profile").value("equipment").toArray(),
+                 QJsonArray({"barbell", "dumbbell", "bodyweight"}));
+    }
+
+    void aRefusedSettingSaysWhyAndKeepsTheRest()
+    {
+        startSignedIn();
+        nav->navigateTo("settings-page");
+        QTRY_VERIFY(findVisible("goal-muscle"));
+        server->methodStatuses["PUT " + path("/profile")] = 503;
+        server->methodResponses["PUT " + path("/profile")] = R"({"status":"error","message":"down"})";
+        click(find("goal-muscle"));
+        QTRY_VERIFY(findVisible("settingsError"));
+        QCOMPARE(find("goal-general")->property("chosen").toBool(), true);   // the profile is unchanged
+    }
+
+    void devicesAreListedAndAnotherCanBeSignedOut()
+    {
+        server->responses[path("/devices")] = R"({"status":"ok","data":[
+ {"id":"f00dfeedf00dfeed","label":"f00dfeed","current":true,"lastSignIn":"2026-11-05T08:00:00Z"},
+ {"id":"0a1b2c3d4e5f6071","label":"0a1b2c3d","current":false,"lastSignIn":null}]})";
+        startSignedIn();
+        nav->navigateTo("settings-page");
+        QTRY_COMPARE(countVisible("deviceRow"), 2);
+        QCOMPARE(countVisible("removeDevice"), 1);                 // never on this device's own row
+        click(find("removeDevice"));
+        QTRY_COMPARE(requestsTo("DELETE", "/devices/0a1b2c3d4e5f6071").size(), 1);
+    }
+
+    void resetTheLookRestoresTheTokens()
+    {
+        startSignedIn();
+        preferences->setProperty("accentColor", QColor("#123456"));
+        nav->navigateTo("settings-page");
+        QTRY_VERIFY(findVisible("resetLook"));
+        QTRY_VERIFY(profile->loaded());   // the Training section grows once it has, which moves what is below it
+        click(find("resetLook"));
+        QTRY_COMPARE(preferences->property("accentColor").value<QColor>(), QColor("#8E5CF5"));
+    }
+
+    // ---- The Intro ----
+
+    void aPendingIntroShowsAfterSignIn()
+    {
+        startInTheIntro();
+        QVERIFY(findVisible("introSkip"));
+        QCOMPARE(find("introStep")->property("step").toInt(), 0);
+    }
+
+    void theAnswersAreSavedOnceAndTheSuggestedStarterShows()
+    {
+        startInTheIntro();
+        walkToTheStarter();
+        QCOMPARE(requestsTo("PUT", "/profile").size(), 1);
+        QCOMPARE(lastBodyTo("PUT", "/profile"),
+                 QJsonObject({{"daysPerWeek", 4}, {"equipment", QJsonArray{"dumbbell", "bodyweight", "bench"}},
+                              {"goal", "muscle"}}));
+        QCOMPARE(find("introStarterTitle")->property("text").toString(), QStringLiteral("Upper/Lower"));
+        QCOMPARE(countVisible("introPreviewRoutine"), 2);
+        QVERIFY(findVisible("introMissing"));
+    }
+
+    void useThisAdoptsAndLandsOnToday()
+    {
+        startInTheIntro();
+        server->methodResponses["POST " + path("/starters/upperLower/adopt")] = programJson();
+        walkToTheStarter();
+        click(find("introUseThis"));
+        QTRY_COMPARE(requestsTo("POST", "/starters/upperLower/adopt").size(), 1);
+        QTRY_COMPARE(lastBodyTo("PUT", "/profile"), QJsonObject({{"introState", "done"}}));
+        QTRY_COMPARE(nav->currentPage(), QStringLiteral("today-page"));
+        QTRY_VERIFY(findVisible("navShell"));
+    }
+
+    void tweakItFirstOpensTheFirstRoutine()
+    {
+        startInTheIntro();
+        server->methodResponses["POST " + path("/starters/upperLower/adopt")] = programJson();
+        walkToTheStarter();
+        click(find("introTweak"));
+        QTRY_COMPARE(nav->currentPage(), QStringLiteral("routine-page"));
+        QCOMPARE(programs->currentRoutineId(), 50);
+    }
+
+    void buildMyOwnMakesAnEmptyProgram()
+    {
+        startInTheIntro();
+        server->methodResponses["POST " + path("/programs")] = programJson();
+        walkToTheStarter();
+        click(find("introBuildOwn"));
+        QTRY_COMPARE(lastBodyTo("POST", "/programs"), QJsonObject({{"title", "My program"}}));
+        QTRY_COMPARE(nav->currentPage(), QStringLiteral("programs-page"));
+    }
+
+    void skipFirstTimeMarksItSkippedAndMakesAnEmptyProgram()
+    {
+        startInTheIntro();
+        server->methodResponses["POST " + path("/programs")] = programJson();
+        click(find("introSkip"));
+        QTRY_COMPARE(lastBodyTo("PUT", "/profile"), QJsonObject({{"introState", "skipped"}}));
+        QTRY_COMPARE(lastBodyTo("POST", "/programs"), QJsonObject({{"title", "My program"}}));
+        QTRY_COMPARE(nav->currentPage(), QStringLiteral("programs-page"));
+    }
+
+    void aReplaysSkipChangesNothing()
+    {
+        startSignedIn();
+        nav->navigateTo("intro-page");
+        QTRY_VERIFY(findVisible("introPage"));
+        click(find("introNext"));
+        QTRY_VERIFY(findVisible("introDays-4"));
+        click(find("introSkip"));
+        QTRY_COMPARE(nav->currentPage(), QStringLiteral("settings-page"));
+        QVERIFY(requestsTo("PUT", "/profile").isEmpty());
+        QVERIFY(requestsTo("POST", "/programs").isEmpty());
+    }
+
+    void aStarterWithNothingInTheCatalogSaysSo()
+    {
+        startInTheIntro();
+        server->responses[path("/starters")] = startersJson(false);
+        walkToTheStarter();
+        QVERIFY(findVisible("introUnavailable"));
+        QVERIFY(!find("introUseThis")->isEnabled());
+        QVERIFY(find("introBuildOwn")->isEnabled());
+    }
+
+    void anyoneElsesSaveNeverMovesTheIntro()
+    {
+        startInTheIntro();
+        walkToTheStarter();
+        // A program made elsewhere (Programs' own page, say) must not look like this page's Build my own.
+        programs->create(QStringLiteral("Elsewhere"));
+        QTRY_VERIFY(!requestsTo("POST", "/programs").isEmpty());
+        QTest::qWait(300);
+        QVERIFY(findVisible("introPage"));
     }
 
     void anUnknownDeviceShowsTheForm()
@@ -270,7 +857,7 @@ private slots:
         click(find("usernameField"));
         type("stub");
         click(find("passwordField"));
-        type("nope");
+        type("nope-nope-nope");
         click(find("loginButton"));
         QTRY_VERIFY(findVisible("loginError"));
         QCOMPARE(find("loginError")->property("text").toString(), QStringLiteral("Wrong username or password"));
@@ -291,9 +878,47 @@ private slots:
         click(find("keyField"));
         type("stub-key");
         click(find("loginButton"));
-        QTRY_VERIFY(findVisible("catalogPage"));
+        QTRY_VERIFY(findVisible("todayPage"));
         QCOMPARE(lastBodyTo("/auth").value("key").toString(), QStringLiteral("stub-key"));
         QCOMPARE(lastBodyTo("/auth").value("username").toString(), QStringLiteral("newbie"));
+    }
+
+    void aShortPasswordIsCaughtBeforeAnythingIsSent()
+    {
+        server->responses[path("/device/identify")] = R"({"status":"new"})";
+        start();
+        QTRY_VERIFY(findVisible("usernameField"));
+        click(find("usernameField"));
+        type("newbie");
+        click(find("passwordField"));
+        type("short");
+        click(find("keyBox"));
+        QTRY_VERIFY(findVisible("keyField"));
+        click(find("keyField"));
+        type("stub-key");
+        click(find("loginButton"));
+        QTRY_VERIFY(findVisible("loginError"));
+        QCOMPARE(find("loginError")->property("text").toString(), QStringLiteral("A password is 8 to 256 characters"));
+        QVERIFY(requestsTo("/auth").isEmpty());
+    }
+
+    void aTakenUsernameIsWordedByThePage()
+    {
+        server->responses[path("/device/identify")] = R"({"status":"new"})";
+        server->statuses[path("/auth")] = 409;
+        server->responses[path("/auth")] = R"({"status":"username_taken","message":"username_taken"})";
+        start();
+        QTRY_VERIFY(findVisible("usernameField"));
+        click(find("usernameField"));
+        type("taken");
+        click(find("passwordField"));
+        type("long-enough");
+        click(find("keyBox"));
+        QTRY_VERIFY(findVisible("keyField"));
+        click(find("keyField"));
+        type("stub-key");
+        click(find("loginButton"));
+        QTRY_COMPARE(find("loginError")->property("text").toString(), QStringLiteral("That username is taken"));
     }
 
     void noServerAndNoAccountHereShowsTheConnectionScreen()
@@ -319,12 +944,43 @@ private slots:
         // The tunnel's own page for a server that is down: the app is offline, and says so under the top bar.
         server->statuses[path("/catalog")] = 502;
         server->responses[path("/catalog")] = "<html>origin unreachable</html>";
+        nav->setStartPage("catalog-page");
         start();
         QTRY_VERIFY(findVisible("catalogPage"));
         QTRY_VERIFY(findVisible("offlineBanner"));
     }
 
+    void theBannerIsHiddenWhileOnline()
+    {
+        startSignedIn();
+        QVERIFY(find("offlineBanner"));
+        QVERIFY(!findVisible("offlineBanner"));
+    }
+
+    void aSessionEndedMidwayReturnsToSignIn()
+    {
+        startSignedIn();
+        server->statuses[path("/catalog")] = 401;
+        server->responses[path("/catalog")] = R"({"status":"error","message":"not signed in"})";
+        exercises->refresh();
+        QTRY_VERIFY(findVisible("loginPage"));
+        QVERIFY(!session->authenticated());
+    }
+
     // ---- The Catalog page ----
+
+    void theCatalogNeverSaysUnavailableBeforeItsFirstAnswer()
+    {
+        server->holdNext[path("/catalog")] = 1;
+        nav->setStartPage("catalog-page");
+        start();
+        QTRY_VERIFY(findVisible("catalogPage"));
+        QTRY_COMPARE(requestsTo("/catalog").size(), 1);
+        QVERIFY(findVisible("catalogLoading"));
+        QVERIFY(!findVisible("catalogUnavailable"));
+        server->releaseHeld();
+        QTRY_COMPARE(countVisible("exerciseTile"), 3);
+    }
 
     void theTilesAreTheShownCatalog()
     {
@@ -372,6 +1028,7 @@ private slots:
         accounts->close();
         api->setBases(QString(), QStringLiteral("http://127.0.0.1:1/api/pride"));
         api->setPingDelays(60000, 60000);
+        nav->setStartPage("catalog-page");
         start();
         QTRY_VERIFY_WITH_TIMEOUT(findVisible("catalogUnavailable"), 10000);
         QVERIFY(findVisible("catalogRetry"));
@@ -488,6 +1145,25 @@ private slots:
         QVERIFY(!findVisible("quickSearchResults"));
     }
 
+    void ctrlKFollowsACatalogChange()
+    {
+        startSignedIn();
+        QTest::keyClick(window(), Qt::Key_K, Qt::ControlModifier);
+        QTRY_VERIFY(find("quickSearchField")->hasActiveFocus());
+        type("pull");
+        QTRY_COMPARE(countVisible("quickSearchRow"), 1);
+        // Pullups leaves the catalog while the list is open.
+        QByteArray changed = catalogJson();
+        changed.replace(R"("version":"v1")", R"("version":"v2")");
+        const QByteArray before = R"("level":"beginner","measure":"reps","region":"upper","removed":false)";
+        QVERIFY(changed.contains(before));
+        changed.replace(before, R"("level":"beginner","measure":"reps","region":"upper","removed":true)");
+        server->responses[path("/catalog")] = changed;
+        exercises->refresh();
+        QTRY_VERIFY(findVisible("quickSearchNothing"));
+        QCOMPARE(countVisible("quickSearchRow"), 0);
+    }
+
     void ctrlKWithNoMatchSaysSoAndEscapeCloses()
     {
         startSignedIn();
@@ -499,6 +1175,657 @@ private slots:
         QTest::keyClick(window(), Qt::Key_Escape);
         QTRY_VERIFY(!findVisible("quickSearchResults"));
         QCOMPARE(find("quickSearchField")->property("text").toString(), QString());
+    }
+
+    // ---- The Routine editor ----
+
+    void startInTheEditor(const QByteArray &answer = QByteArray())
+    {
+        server->responses[path("/programs")] = twoPrograms();
+        server->responses[path("/programs/5")] = answer.isEmpty() ? programJson() : answer;
+        start();
+        QTRY_VERIFY(findVisible("todayPage"));
+        programs->open(5);
+        QTRY_COMPARE(programs->currentId(), 5);
+        programs->openRoutine(50);
+        nav->navigateTo("routine-page");
+        QTRY_VERIFY(findVisible("routinePage"));
+        QTRY_COMPARE(countVisible("itemRow"), 1);
+    }
+
+    void replaceText(const char *name, const QString &text)
+    {
+        click(find(name));
+        QTest::keyClick(window(), Qt::Key_A, Qt::ControlModifier);
+        type(text);
+        QTest::keyClick(window(), Qt::Key_Return);
+    }
+
+    void theEditorShowsItsItems()
+    {
+        startInTheEditor();
+        QCOMPARE(find("routineNameField")->property("text").toString(), QStringLiteral("Upper"));
+        QCOMPARE(find("itemName")->property("text").toString(), QStringLiteral("Barbell Curl"));
+        QCOMPARE(find("itemSets")->property("text").toString(), QStringLiteral("3"));
+        QCOMPARE(find("itemWeight")->property("text").toString(), QStringLiteral("135"));
+        QCOMPARE(find("itemRest")->property("text").toString(), QStringLiteral("1:30"));
+        QVERIFY(!findVisible("itemGone"));
+    }
+
+    void changingOneFieldSendsTheWholeRow()
+    {
+        startInTheEditor();
+        server->methodResponses["PUT " + path("/routine-items/500")] = programJson();
+        replaceText("itemSets", "4");
+        QTRY_COMPARE(requestsTo("PUT", "/routine-items/500").size(), 1);
+        const QJsonObject sent = lastBodyTo("PUT", "/routine-items/500");
+        QCOMPARE(sent.value("sets").toInt(), 4);
+        QCOMPARE(sent.value("repsMin").toInt(), 8);
+        QCOMPARE(sent.value("targetWeight").toDouble(), 135.0);
+        QCOMPARE(sent.value("targetUnit").toString(), QStringLiteral("lb"));
+        QCOMPARE(sent.value("restSeconds").toInt(), 90);
+        QVERIFY(sent.contains("note") && sent.value("note").isNull());
+    }
+
+    void aReversedRangeIsCaughtBeforeSending()
+    {
+        startInTheEditor();
+        replaceText("itemRepsMin", "15");
+        QTRY_VERIFY(findVisible("itemError"));
+        QCOMPARE(find("itemError")->property("text").toString(),
+                 QStringLiteral("The top of the range is 1 to 100, and not below the bottom"));
+        QVERIFY(requestsTo("PUT", "/routine-items/500").isEmpty());
+        QCOMPARE(find("itemRepsMin")->property("text").toString(), QStringLiteral("15"));
+    }
+
+    void anOfflineSaveKeepsWhatWasTyped()
+    {
+        startInTheEditor();
+        api->setBases(QString(), QStringLiteral("http://127.0.0.1:1/api/pride"));
+        api->setPingDelays(60000, 60000);
+        replaceText("itemSets", "4");
+        QTRY_VERIFY_WITH_TIMEOUT(findVisible("itemError"), 10000);
+        QCOMPARE(find("itemError")->property("text").toString(),
+                 QStringLiteral("Can't reach Pride right now. Nothing was lost; try again."));
+        QCOMPARE(find("itemSets")->property("text").toString(), QStringLiteral("4"));
+    }
+
+    void thePickerFollowsTheProfilesEquipmentAndAdds()
+    {
+        startInTheEditor();
+        server->methodResponses["POST " + path("/routine-items")] = programJson();
+        click(find("addExercise"));
+        QTRY_VERIFY(findVisible("exercisePicker"));
+        // The profile has barbell and bodyweight: Barbell Curl fits; Kettlebell Halo and Pullups (a pull-up bar) don't.
+        QTRY_COMPARE(countVisible("pickerRow"), 1);
+        click(find("pickerEverything"));
+        QTRY_COMPARE(countVisible("pickerRow"), 3);
+        // The rows are replaced as the list grows; the click waits for the new ones to be laid out.
+        settle();
+        QTRY_VERIFY(findVisible("pickerRow") && findVisible("pickerRow")->height() > 0);
+        click(findVisible("pickerRow"));
+        QTRY_COMPARE(lastBodyTo("POST", "/routine-items"), QJsonObject({{"routineId", 50}, {"exerciseId", 1}}));
+        QTRY_VERIFY(!findVisible("exercisePicker"));
+    }
+
+    void aRemovedExerciseIsStillNamedInTheEditor()
+    {
+        QByteArray answer = programJson();
+        answer.replace(R"("id":500,"exerciseId":1)", R"("id":500,"exerciseId":9)");
+        startInTheEditor(answer);
+        QCOMPARE(find("itemName")->property("text").toString(), QStringLiteral("Old Row"));
+        QVERIFY(findVisible("itemGone"));
+    }
+
+    void removingAndReorderingItems()
+    {
+        QByteArray two = programJson();
+        two.replace(R"("restSeconds":90,"note":null}]})",
+                    R"("restSeconds":90,"note":null},{"id":501,"exerciseId":7,"sets":3,"repsMin":5,"repsMax":8,"targetWeight":null,"targetUnit":null,"targetSeconds":null,"targetDistance":null,"distanceUnit":null,"restSeconds":null,"note":null}]})");
+        server->responses[path("/programs")] = twoPrograms();
+        server->responses[path("/programs/5")] = two;
+        start();
+        QTRY_VERIFY(findVisible("todayPage"));
+        programs->open(5);
+        QTRY_COMPARE(programs->currentId(), 5);
+        programs->openRoutine(50);
+        nav->navigateTo("routine-page");
+        QTRY_COMPARE(countVisible("itemRow"), 2);
+        server->methodResponses["POST " + path("/routine-items/reorder")] = two;
+        click(find("itemName"));
+        QTest::keyClick(window(), Qt::Key_Down, Qt::AltModifier);
+        QTRY_COMPARE(lastBodyTo("POST", "/routine-items/reorder"),
+                     QJsonObject({{"routineId", 50}, {"order", QJsonArray{501, 500}}}));
+        server->methodResponses["DELETE " + path("/routine-items/500")] = programJson();
+        click(find("itemDelete"));
+        QTRY_COMPARE(requestsTo("DELETE", "/routine-items/500").size(), 1);
+    }
+
+    void renamingTheRoutine()
+    {
+        startInTheEditor();
+        server->methodResponses["PUT " + path("/routines/50")] = programJson();
+        replaceText("routineNameField", "Upper A");
+        QTRY_COMPARE(lastBodyTo("PUT", "/routines/50"), QJsonObject({{"title", "Upper A"}}));
+    }
+
+    // The program with routine 50's one item replaced by `item` (an item's JSON).
+    static QByteArray programWithItem(const QByteArray &item)
+    {
+        QByteArray answer = programJson();
+        const QByteArray tail = R"("note":null})";
+        const int start = answer.indexOf(R"({"id":500)");
+        const int end = answer.indexOf(tail, start) + tail.size();
+        answer.replace(start, end - start, item);
+        return answer;
+    }
+
+    // Pullups (7) as a distance item holding 5 in `unit` and `seconds` (JSON text) for its time.
+    static QByteArray distanceItem(const QByteArray &seconds, const QByteArray &unit)
+    {
+        return "{\"id\":500,\"exerciseId\":7,\"sets\":1,\"repsMin\":null,\"repsMax\":null,\"targetWeight\":null,"
+               "\"targetUnit\":null,\"targetSeconds\":" + seconds + ",\"targetDistance\":5,\"distanceUnit\":\"" + unit
+               + "\",\"restSeconds\":null,\"note\":null}";
+    }
+
+    // Kettlebell Halo (5) becomes a timed exercise and Pullups (7) a distance one, which the fixture has none of.
+    void makeTimedAndDistanceExercises()
+    {
+        QByteArray changed = catalogJson();
+        const QByteArray halo = R"("measure":"weight_reps","region":"upper","removed":false,
+  "primary":["shoulders"])";
+        const QByteArray pullups = R"("measure":"reps","region":"upper","removed":false,
+  "primary":["lats"])";
+        QVERIFY(changed.contains(halo) && changed.contains(pullups));
+        changed.replace(halo, QByteArray(halo).replace("weight_reps", "time"));
+        changed.replace(pullups, QByteArray(pullups).replace("\"reps\"", "\"distance_time\""));
+        server->responses[path("/catalog")] = changed;
+    }
+
+    void aTimeRowSavesItsSeconds()
+    {
+        makeTimedAndDistanceExercises();
+        startInTheEditor(programWithItem(R"({"id":500,"exerciseId":5,"sets":3,"repsMin":null,"repsMax":null,"targetWeight":null,"targetUnit":null,"targetSeconds":30,"targetDistance":null,"distanceUnit":null,"restSeconds":null,"note":null})"));
+        QCOMPARE(find("itemSeconds")->property("text").toString(), QStringLiteral("0:30"));
+        QVERIFY(!findVisible("itemWeight"));
+        server->methodResponses["PUT " + path("/routine-items/500")] = programJson();
+        replaceText("itemSeconds", "1:30");
+        QTRY_COMPARE(requestsTo("PUT", "/routine-items/500").size(), 1);
+        const QJsonObject sent = lastBodyTo("PUT", "/routine-items/500");
+        QCOMPARE(sent.value("targetSeconds").toInt(), 90);
+        QCOMPARE(sent.value("sets").toInt(), 3);
+        QVERIFY(sent.value("repsMin").isNull() && sent.value("targetWeight").isNull());
+    }
+
+    void aDistanceRowSavesDistanceUnitAndSeconds()
+    {
+        makeTimedAndDistanceExercises();
+        const QByteArray item = R"({"id":500,"exerciseId":7,"sets":1,"repsMin":null,"repsMax":null,"targetWeight":null,"targetUnit":null,"targetSeconds":null,"targetDistance":null,"distanceUnit":null,"restSeconds":null,"note":null})";
+        startInTheEditor(programWithItem(item));
+        QVERIFY(findVisible("itemDistance") && findVisible("itemDistanceSeconds"));
+        QVERIFY(!findVisible("itemSeconds") && !findVisible("itemWeight"));
+        // Each answer is the program as the server would now hold it, so the rebuilt row is still a distance row.
+        server->methodResponses["PUT " + path("/routine-items/500")] = programWithItem(distanceItem("null", "mi"));
+        replaceText("itemDistance", "5");
+        QTRY_COMPARE(requestsTo("PUT", "/routine-items/500").size(), 1);
+        // The profile counts in pounds, so the distance starts in miles.
+        QJsonObject sent = lastBodyTo("PUT", "/routine-items/500");
+        QCOMPARE(sent.value("targetDistance").toDouble(), 5.0);
+        QCOMPARE(sent.value("distanceUnit").toString(), QStringLiteral("mi"));
+        QVERIFY(sent.value("targetSeconds").isNull());
+        server->methodResponses["PUT " + path("/routine-items/500")] = programWithItem(distanceItem("1500", "mi"));
+        settle();
+        replaceText("itemDistanceSeconds", "25:00");
+        QTRY_COMPARE(requestsTo("PUT", "/routine-items/500").size(), 2);
+        sent = lastBodyTo("PUT", "/routine-items/500");
+        QCOMPARE(sent.value("targetSeconds").toInt(), 1500);
+        QCOMPARE(sent.value("targetDistance").toDouble(), 5.0);
+        server->methodResponses["PUT " + path("/routine-items/500")] = programWithItem(distanceItem("1500", "km"));
+        settle();
+        click(find("itemDistanceUnit-km"));
+        QTRY_COMPARE(requestsTo("PUT", "/routine-items/500").size(), 3);
+        QCOMPARE(lastBodyTo("PUT", "/routine-items/500").value("distanceUnit").toString(), QStringLiteral("km"));
+    }
+
+    void choosingTheWeightUnitSendsIt()
+    {
+        startInTheEditor();
+        server->methodResponses["PUT " + path("/routine-items/500")] = programJson();
+        click(find("itemUnit-kg"));
+        QTRY_COMPARE(requestsTo("PUT", "/routine-items/500").size(), 1);
+        const QJsonObject sent = lastBodyTo("PUT", "/routine-items/500");
+        QCOMPARE(sent.value("targetUnit").toString(), QStringLiteral("kg"));
+        QCOMPARE(sent.value("targetWeight").toDouble(), 135.0);
+    }
+
+    void withNoRoutineOpenTheEditorSaysSoAndGoesBack()
+    {
+        server->responses[path("/programs")] = twoPrograms();
+        start();
+        QTRY_VERIFY(findVisible("todayPage"));
+        nav->navigateTo("routine-page");
+        QTRY_VERIFY(findVisible("routineMissing"));
+        QVERIFY(!findVisible("addExercise"));
+        click(find("routineMissingBack"));
+        QTRY_COMPARE(nav->currentPage(), QStringLiteral("programs-page"));
+    }
+
+    void anExerciseTheCatalogDoesNotKnowShowsOnlyItsNameAndRemove()
+    {
+        startInTheEditor(programWithItem(R"({"id":500,"exerciseId":99,"sets":3,"repsMin":8,"repsMax":12,"targetWeight":null,"targetUnit":null,"targetSeconds":null,"targetDistance":null,"distanceUnit":null,"restSeconds":null,"note":null})"));
+        QCOMPARE(find("itemName")->property("text").toString(), QStringLiteral("An exercise this device doesn't know"));
+        QVERIFY(findVisible("itemGone"));
+        QVERIFY(findVisible("itemDelete"));
+        QVERIFY(!findVisible("itemSets") && !findVisible("itemNote"));
+    }
+
+    void anItemGoneElsewhereLandsOnProgramsWithTheNotice()
+    {
+        startInTheEditor();
+        server->methodStatuses["PUT " + path("/routine-items/500")] = 404;
+        server->methodResponses["PUT " + path("/routine-items/500")] = R"({"status":"error","message":"not found"})";
+        server->statuses[path("/programs/5")] = 404;      // the whole program is gone, which the re-fetch confirms
+        replaceText("itemSets", "4");
+        QTRY_COMPARE(nav->currentPage(), QStringLiteral("programs-page"));
+        QTRY_VERIFY(findVisible("programsNotice"));
+        QCOMPARE(find("programsNotice")->property("text").toString(),
+                 QStringLiteral("That was changed or removed on another device, so it's been closed here."));
+    }
+
+    void anItemGoneAloneLeavesTheProgramOpenAndSaysWhy()
+    {
+        startInTheEditor();
+        server->methodStatuses["PUT " + path("/routine-items/500")] = 404;
+        server->methodResponses["PUT " + path("/routine-items/500")] = R"({"status":"error","message":"not found"})";
+        const int opens = requestsTo("GET", "/programs/5").size();
+        replaceText("itemSets", "4");
+        QTRY_VERIFY(requestsTo("GET", "/programs/5").size() > opens);
+        QTRY_VERIFY(findVisible("itemError"));
+        QCOMPARE(nav->currentPage(), QStringLiteral("routine-page"));
+        QCOMPARE(programs->currentId(), 5);
+    }
+
+    void todayNamesAnExerciseItDoesNotKnow()
+    {
+        server->responses[path("/today")] = todayJson(R"([{"id":511,"exerciseId":99,"sets":3,"repsMin":8,"repsMax":12,
+ "targetWeight":null,"targetUnit":null,"targetSeconds":null,"targetDistance":null,"distanceUnit":null,"restSeconds":null,"note":null}])");
+        startOnToday();
+        QTRY_COMPARE(countVisible("todayItem"), 1);
+        QCOMPARE(find("todayItemName")->property("text").toString(), QStringLiteral("An exercise this device doesn't know"));
+        QVERIFY(findVisible("todayItemGone"));
+    }
+
+    // ---- Own exercises and Add to a routine ----
+
+    // Built from plain strings: moc stumbles on a raw string that opens a brace it does not close.
+    static QByteArray sandbag(int id = 900, const char *name = "Sandbag Carry")
+    {
+        const QByteArray fields = R"("key":"own-0123456789abcdef","source":"own","licence":null,"category":null,)"
+                                  R"("level":null,"measure":"distance_time","region":"upper","removed":false,)"
+                                  R"("primary":["forearms"],"secondary":[],"equipment":["other"],"steps":["Walk."],"pictures":[])";
+        return "{\"id\":" + QByteArray::number(id) + ",\"name\":\"" + name + "\"," + fields + "}";
+    }
+
+    void addingAnOwnExerciseOpensIt()
+    {
+        server->methodResponses["POST " + path("/exercises")] = "{\"status\":\"ok\",\"data\":" + sandbag() + "}";
+        startSignedIn();
+        click(find("addOwnExercise"));
+        QTRY_VERIFY(findVisible("ownForm"));
+        click(find("ownName"));
+        type("Sandbag Carry");
+        click(find("ownMeasure-distance_time"));
+        click(find("ownPrimary-forearms"));
+        click(find("ownEquipment-other"));
+        click(find("ownSave"));
+        QTRY_COMPARE(requestsTo("POST", "/exercises").size(), 1);
+        const QJsonObject sent = lastBodyTo("POST", "/exercises");
+        QCOMPARE(sent.value("name").toString(), QStringLiteral("Sandbag Carry"));
+        QCOMPARE(sent.value("primary").toArray(), QJsonArray({"forearms"}));
+        QTRY_VERIFY(findVisible("exercisePage"));
+        QCOMPARE(find("exerciseName")->property("text").toString(), QStringLiteral("Sandbag Carry"));
+    }
+
+    void ownExerciseFormKeepsItsFieldsWhenRefused()
+    {
+        server->methodStatuses["POST " + path("/exercises")] = 503;
+        server->methodResponses["POST " + path("/exercises")] = R"({"status":"error","message":"down"})";
+        startSignedIn();
+        click(find("addOwnExercise"));
+        QTRY_VERIFY(findVisible("ownForm"));
+        click(find("ownSave"));                       // nothing filled in: caught before sending
+        QTRY_VERIFY(findVisible("ownError"));
+        QCOMPARE(find("ownError")->property("text").toString(), QStringLiteral("A name is 1 to 120 characters"));
+        QVERIFY(requestsTo("POST", "/exercises").isEmpty());
+        click(find("ownName"));
+        type("Sandbag Carry");
+        click(find("ownMeasure-distance_time"));
+        click(find("ownPrimary-forearms"));
+        click(find("ownEquipment-other"));
+        click(find("ownSave"));
+        QTRY_COMPARE(find("ownError")->property("text").toString(), QStringLiteral("Pride couldn't do that just now. Try again."));
+        QVERIFY(findVisible("ownForm"));
+        QCOMPARE(find("ownName")->property("text").toString(), QStringLiteral("Sandbag Carry"));
+    }
+
+    void mineNarrowsToOwnExercises()
+    {
+        server->responses[path("/exercises")] = "{\"status\":\"ok\",\"data\":[" + sandbag() + "]}";
+        startSignedIn();
+        QTRY_VERIFY(findVisible("chip-mine-mine"));
+        QTRY_COMPARE(countVisible("exerciseTile"), 4);
+        click(find("chip-mine-mine"));
+        QTRY_COMPARE(countVisible("exerciseTile"), 1);
+    }
+
+    void editingAndDeletingAnOwnExercise()
+    {
+        server->responses[path("/exercises")] = "{\"status\":\"ok\",\"data\":[" + sandbag() + "]}";
+        server->methodResponses["PUT " + path("/exercises/900")] = "{\"status\":\"ok\",\"data\":" + sandbag(900, "Sandbag Walk") + "}";
+        server->methodResponses["DELETE " + path("/exercises/900")] = R"({"status":"ok","data":{"routinesTouched":1,"hidden":false}})";
+        startSignedIn();
+        QTRY_COMPARE(catalog->own().size(), 1);
+        catalog->open(900);
+        nav->navigateTo("exercise-page");
+        QTRY_VERIFY(findVisible("editOwn"));
+        QVERIFY(find("exerciseCredit")->property("text").toString().contains(QStringLiteral("your own")));
+        click(find("editOwn"));
+        QTRY_VERIFY(findVisible("ownForm"));
+        QCOMPARE(find("ownName")->property("text").toString(), QStringLiteral("Sandbag Carry"));
+        click(find("ownName"));
+        QTest::keyClick(window(), Qt::Key_A, Qt::ControlModifier);
+        type("Sandbag Walk");
+        click(find("ownSave"));
+        QTRY_COMPARE(lastBodyTo("PUT", "/exercises/900").value("name").toString(), QStringLiteral("Sandbag Walk"));
+        QTRY_VERIFY(!findVisible("ownForm"));
+        click(find("deleteOwn"));
+        QTRY_VERIFY(findVisible("confirmYes"));
+        click(find("confirmYes"));
+        QTRY_COMPARE(requestsTo("DELETE", "/exercises/900").size(), 1);
+        QTRY_VERIFY(findVisible("catalogPage"));
+    }
+
+    void addingToARoutineFromTheExercisePage()
+    {
+        server->responses[path("/programs")] = twoPrograms();
+        server->responses[path("/programs/5")] = programJson();
+        server->methodResponses["POST " + path("/routine-items")] = programJson();
+        startSignedIn();
+        catalog->open(7);
+        nav->navigateTo("exercise-page");
+        QTRY_VERIFY(findVisible("addToRoutine"));
+        click(find("addToRoutine"));
+        QTRY_VERIFY(findVisible("addToRoutinePopup"));
+        QTRY_COMPARE(countVisible("addProgramRow"), 2);
+        click(find("addProgramRow"));                  // the active one is listed first
+        QTRY_COMPARE(countVisible("addRoutineRow"), 2);
+        click(find("addRoutineRow"));
+        QTRY_COMPARE(lastBodyTo("POST", "/routine-items"), QJsonObject({{"routineId", 50}, {"exerciseId", 7}}));
+        QTRY_VERIFY(findVisible("addToRoutineDone"));
+    }
+
+    void aRefusedDeleteSaysWhyAndKeepsTheExercise()
+    {
+        server->responses[path("/exercises")] = "{\"status\":\"ok\",\"data\":[" + sandbag() + "]}";
+        server->methodStatuses["DELETE " + path("/exercises/900")] = 503;
+        server->methodResponses["DELETE " + path("/exercises/900")] = R"({"status":"error","message":"down"})";
+        startSignedIn();
+        QTRY_COMPARE(catalog->own().size(), 1);
+        catalog->open(900);
+        nav->navigateTo("exercise-page");
+        QTRY_VERIFY(findVisible("deleteOwn"));
+        click(find("deleteOwn"));
+        QTRY_VERIFY(findVisible("confirmYes"));
+        click(find("confirmYes"));
+        QTRY_VERIFY(findVisible("exerciseError"));
+        QCOMPARE(find("exerciseError")->property("text").toString(), QStringLiteral("Pride couldn't do that just now. Try again."));
+        QVERIFY(findVisible("exercisePage"));
+        QCOMPARE(catalog->own().size(), 1);
+    }
+
+    void aRefusedAddToARoutineSaysWhy()
+    {
+        server->responses[path("/programs")] = twoPrograms();
+        server->responses[path("/programs/5")] = programJson();
+        server->methodStatuses["POST " + path("/routine-items")] = 503;
+        server->methodResponses["POST " + path("/routine-items")] = R"({"status":"error","message":"down"})";
+        startSignedIn();
+        catalog->open(7);
+        nav->navigateTo("exercise-page");
+        QTRY_VERIFY(findVisible("addToRoutine"));
+        click(find("addToRoutine"));
+        QTRY_COMPARE(countVisible("addProgramRow"), 2);
+        click(find("addProgramRow"));
+        QTRY_COMPARE(countVisible("addRoutineRow"), 2);
+        click(find("addRoutineRow"));
+        QTRY_VERIFY(findVisible("addToRoutineError"));
+        QCOMPARE(find("addToRoutineError")->property("text").toString(), QStringLiteral("Pride couldn't do that just now. Try again."));
+        QVERIFY(!findVisible("addToRoutineDone"));
+    }
+
+    void withNoProgramsAddToARoutinePointsToPrograms()
+    {
+        server->responses[path("/programs")] = R"({"status":"ok","data":[]})";
+        startSignedIn();
+        catalog->open(7);
+        nav->navigateTo("exercise-page");
+        QTRY_VERIFY(findVisible("addToRoutine"));
+        click(find("addToRoutine"));
+        QTRY_VERIFY(findVisible("addToRoutineNoPrograms"));
+        QVERIFY(findVisible("addToRoutineOpenPrograms"));
+        QVERIFY(!findVisible("addToRoutineListError"));
+    }
+
+    void aProgramListThatCannotLoadIsNotAnEmptyOne()
+    {
+        server->statuses[path("/programs")] = 503;
+        server->responses[path("/programs")] = R"({"status":"error","message":"down"})";
+        startSignedIn();
+        catalog->open(7);
+        nav->navigateTo("exercise-page");
+        QTRY_VERIFY(findVisible("addToRoutine"));
+        click(find("addToRoutine"));
+        QTRY_VERIFY(findVisible("addToRoutineListError"));
+        QCOMPARE(find("addToRoutineListError")->property("text").toString(), QStringLiteral("Pride couldn't do that just now. Try again."));
+        QVERIFY(!findVisible("addToRoutineNoPrograms"));
+    }
+
+    void aProgramThatCannotBeOpenedReturnsToTheList()
+    {
+        server->responses[path("/programs")] = twoPrograms();
+        server->statuses[path("/programs/5")] = 503;
+        server->responses[path("/programs/5")] = R"({"status":"error","message":"down"})";
+        startSignedIn();
+        catalog->open(7);
+        nav->navigateTo("exercise-page");
+        QTRY_VERIFY(findVisible("addToRoutine"));
+        click(find("addToRoutine"));
+        QTRY_COMPARE(countVisible("addProgramRow"), 2);
+        click(find("addProgramRow"));
+        QTRY_VERIFY(findVisible("addToRoutineError"));
+        QTRY_COMPARE(countVisible("addProgramRow"), 2);
+        QCOMPARE(countVisible("addRoutineRow"), 0);
+    }
+
+    void aRemovedExerciseCannotBeAddedToARoutine()
+    {
+        startSignedIn();
+        catalog->open(9);
+        nav->navigateTo("exercise-page");
+        QTRY_VERIFY(findVisible("exerciseGone"));
+        QVERIFY(!findVisible("addToRoutine"));
+    }
+
+    // ---- The final review's fixes ----
+
+    // The server goes out of reach after the page is up.
+    void goOffline()
+    {
+        api->setBases(QString(), QStringLiteral("http://127.0.0.1:1/api/pride"));
+        api->setPingDelays(60000, 60000);
+    }
+
+    void anOfflineProgramRenameKeepsTheTypedTitle()
+    {
+        startOnPrograms();
+        goOffline();
+        replaceText("programTitleField", "Summer");
+        QTRY_VERIFY_WITH_TIMEOUT(findVisible("programsError"), 10000);
+        QCOMPARE(find("programsError")->property("text").toString(),
+                 QStringLiteral("Can't reach Pride right now. Nothing was lost; try again."));
+        QCOMPARE(find("programTitleField")->property("text").toString(), QStringLiteral("Summer"));
+    }
+
+    void anOfflineRoutineRenameKeepsTheTypedTitle()
+    {
+        startInTheEditor();
+        goOffline();
+        replaceText("routineNameField", "Upper A");
+        QTRY_VERIFY_WITH_TIMEOUT(findVisible("routineError"), 10000);
+        QCOMPARE(find("routineError")->property("text").toString(),
+                 QStringLiteral("Can't reach Pride right now. Nothing was lost; try again."));
+        QCOMPARE(find("routineNameField")->property("text").toString(), QStringLiteral("Upper A"));
+    }
+
+    void aTypedIncrementSurvivesAnotherFieldsSave()
+    {
+        startSignedIn();
+        nav->navigateTo("settings-page");
+        QTRY_VERIFY(findVisible("upperIncrementField"));
+        replaceText("upperIncrementField", "0.3");            // refused before sending, and left as typed
+        QTRY_VERIFY(findVisible("settingsError"));
+        server->methodResponses["PUT " + path("/profile")] = profileJson("done");
+        click(find("units-kg"));
+        QTRY_COMPARE(requestsTo("PUT", "/profile").size(), 1);
+        QTRY_COMPARE(find("upperIncrementField")->property("text").toString(), QStringLiteral("0.3"));
+        QCOMPARE(find("lowerIncrementField")->property("text").toString(), QStringLiteral("10"));
+        // A saved increment lets go again: the field follows the profile once the server has the value.
+        QByteArray answer = profileJson("done");
+        answer.replace("5.0", "7.5");
+        server->methodResponses["PUT " + path("/profile")] = answer;
+        replaceText("upperIncrementField", "7.5");
+        QTRY_COMPARE(requestsTo("PUT", "/profile").size(), 2);
+        QTRY_COMPARE(find("upperIncrementField")->property("text").toString(), QStringLiteral("7.5"));
+    }
+
+    void aProgramListThatCouldNotBeFetchedIsNotNoProgramsYet()
+    {
+        server->statuses[path("/programs")] = 503;
+        server->responses[path("/programs")] = R"({"status":"error","message":"down"})";
+        start();
+        QTRY_VERIFY(findVisible("todayPage"));
+        nav->navigateTo("programs-page");
+        QTRY_VERIFY(findVisible("programsListError"));
+        QCOMPARE(find("programsListError")->property("text").toString(), QStringLiteral("Pride couldn't do that just now. Try again."));
+        QVERIFY(!findVisible("programsEmpty"));
+        server->statuses[path("/programs")] = 200;
+        server->responses[path("/programs")] = twoPrograms();
+        server->responses[path("/programs/5")] = programJson();
+        click(find("programsListRetry"));
+        QTRY_COMPARE(countVisible("programRow"), 2);
+        QVERIFY(!findVisible("programsListError"));
+    }
+
+    void todayThatCouldNotBeFetchedOffersTryAgain()
+    {
+        server->statuses[path("/today")] = 503;
+        server->responses[path("/today")] = R"({"status":"error","message":"down"})";
+        startOnToday();
+        QTRY_VERIFY(findVisible("todayUnavailable"));
+        const int asked = requestsTo("/today").size();
+        server->statuses[path("/today")] = 200;
+        server->responses[path("/today")] = todayJson(curlItem());
+        click(find("todayRetry"));
+        QTRY_VERIFY(findVisible("nextUpCard"));
+        QCOMPARE(requestsTo("/today").size(), asked + 1);
+    }
+
+    void aVisitToTodayAfterAFailedFirstFetchAsksAgain()
+    {
+        server->statuses[path("/today")] = 503;
+        server->responses[path("/today")] = R"({"status":"error","message":"down"})";
+        startOnToday();
+        QTRY_VERIFY(findVisible("todayUnavailable"));
+        QTRY_VERIFY(!programs->todayError().isEmpty());
+        nav->navigateTo("catalog-page");
+        QTRY_VERIFY(findVisible("catalogPage"));
+        server->statuses[path("/today")] = 200;
+        server->responses[path("/today")] = todayJson(curlItem());
+        const int before = requestsTo("/today").size();
+        nav->navigateTo("today-page");
+        QTRY_VERIFY(findVisible("nextUpCard"));
+        QVERIFY(requestsTo("/today").size() > before);
+    }
+
+    void deletingAnOwnExerciseARoutineUsesReloadsTheOpenProgram()
+    {
+        server->responses[path("/exercises")] = "{\"status\":\"ok\",\"data\":[" + sandbag() + "]}";
+        server->responses[path("/programs")] = twoPrograms();
+        server->responses[path("/programs/5")] = programJson();
+        server->methodResponses["DELETE " + path("/exercises/900")] = R"({"status":"ok","data":{"routinesTouched":1,"hidden":false}})";
+        startSignedIn();
+        QTRY_COMPARE(catalog->own().size(), 1);
+        programs->open(5);
+        QTRY_COMPARE(programs->currentId(), 5);
+        catalog->open(900);
+        nav->navigateTo("exercise-page");
+        QTRY_VERIFY(findVisible("deleteOwn"));
+        click(find("deleteOwn"));
+        QTRY_VERIFY(findVisible("confirmYes"));
+        const int before = requestsTo("GET", "/programs/5").size();
+        click(find("confirmYes"));
+        QTRY_COMPARE(requestsTo("DELETE", "/exercises/900").size(), 1);
+        QTRY_VERIFY(requestsTo("GET", "/programs/5").size() > before);
+    }
+
+    void thePickerOffersEverythingOnlyWhileItIsOff()
+    {
+        startInTheEditor();
+        click(find("addExercise"));
+        QTRY_VERIFY(findVisible("exercisePicker"));
+        click(find("pickerField"));
+        type("zzz");
+        QTRY_VERIFY(findVisible("pickerNothing"));
+        QVERIFY(find("pickerNothing")->property("text").toString().contains(QStringLiteral("Show everything?")));
+        click(find("pickerEverything"));
+        QTRY_COMPARE(find("pickerNothing")->property("text").toString(), QStringLiteral("No exercise by that name"));
+    }
+
+    void skipWaitsForAListThatCouldNotLoadAndMakesNoSpareProgram()
+    {
+        server->statuses[path("/programs")] = 503;
+        server->responses[path("/programs")] = R"({"status":"error","message":"down"})";
+        startInTheIntro();
+        QTRY_VERIFY(programs->listError().length() > 0);
+        // Back is on the left and Skip on the right of the row.
+        QVERIFY(find("introSkip")->x() > find("introBack")->x());
+        click(find("introSkip"));
+        QTRY_VERIFY(findVisible("introError"));
+        QCOMPARE(find("introError")->property("text").toString(), QStringLiteral("Pride couldn't do that just now. Try again."));
+        QVERIFY(requestsTo("POST", "/programs").isEmpty());
+        QCOMPARE(nav->currentPage(), QStringLiteral("intro-page"));
+        // Once the list answers, empty, the empty program is made.
+        server->statuses[path("/programs")] = 200;
+        server->responses[path("/programs")] = R"({"status":"ok","data":[]})";
+        server->methodResponses["POST " + path("/programs")] = programJson();
+        click(find("introSkip"));
+        QTRY_COMPARE(lastBodyTo("POST", "/programs"), QJsonObject({{"title", "My program"}}));
+        QTRY_COMPARE(nav->currentPage(), QStringLiteral("programs-page"));
+    }
+
+    void theOwnExerciseFormKeepsSaveAndCancelOutsideItsScrollingForm()
+    {
+        startSignedIn();
+        click(find("addOwnExercise"));
+        QTRY_VERIFY(findVisible("ownForm"));
+        settle();
+        for (const char *name : {"ownSave", "ownCancel"}) {
+            QQuickItem *button = find(name);
+            QVERIFY(button);
+            for (QQuickItem *up = button->parentItem(); up; up = up->parentItem())
+                QVERIFY2(up->objectName() != QLatin1String("ownForm"), name);
+            QVERIFY(button->mapToScene(QPointF(0, button->height())).y() <= window()->height());
+        }
     }
 };
 

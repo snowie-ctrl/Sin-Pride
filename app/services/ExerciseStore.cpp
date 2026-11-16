@@ -77,6 +77,8 @@ void ExerciseStore::load()
     // A copy that does not read whole (a crash mid-write, a hand edit) is no copy: the next refresh asks for all of it.
     if (!doc.isObject() || !adopt(doc.object()))
         qWarning() << "[catalog] the copy on this device could not be read; it will be fetched again";
+    else
+        m_settled = true;
 }
 
 bool ExerciseStore::adopt(const QJsonObject &data)
@@ -143,8 +145,10 @@ void ExerciseStore::refresh()
         query.addQueryItem(QStringLiteral("version"), m_version);
     m_api.get(QStringLiteral("/catalog"), query, [this](const Api::Result &result) {
         m_loading = false;
+        // Whatever the answer, the device now knows where the catalog stands.
+        m_settled = true;
         if (!result.ok) {
-            m_error = reasonOf(result);
+            m_error = failureOf(result);
         } else {
             const QJsonObject data = result.object.value("data").toObject();
             if (!data.value("unchanged").toBool()) {
@@ -152,7 +156,7 @@ void ExerciseStore::refresh()
                     save();
                     prunePictures();
                 } else {
-                    m_error = QStringLiteral("The server sent a catalog this app cannot read");
+                    m_error = QStringLiteral("bad_reply");
                 }
             }
         }

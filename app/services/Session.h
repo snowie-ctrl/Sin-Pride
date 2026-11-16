@@ -49,7 +49,7 @@ class Session : public QObject
     // name for the device, never its fingerprint.
     Q_PROPERTY(QVariantList devices READ devices NOTIFY devicesChanged)
     Q_PROPERTY(bool devicesLoading READ devicesLoading NOTIFY devicesChanged)
-    // Why the last load failed; the devices shown stay as they were.
+    // Why the last load failed, as a code (failureOf); the devices shown stay as they were.
     Q_PROPERTY(QString devicesError READ devicesError NOTIFY devicesChanged)
 
 public:
@@ -94,7 +94,7 @@ signals:
     void busyChanged();
     void connectionRouteChanged();
     void loginSucceeded();
-    void loginFailed(const QString &code, const QString &message);
+    void loginFailed(const QString &code);
     void signedOut();
     void onlineChanged();
     void unreachableChanged();
@@ -105,7 +105,7 @@ signals:
     void devicesChanged();
     // what is "device": Pride's routes change nothing else of an account yet.
     void accountUpdated(const QString &what);
-    void accountFailed(const QString &what, const QString &message);
+    void accountFailed(const QString &what, const QString &code);
 
 private:
     bool apply(const QJsonObject &payload);

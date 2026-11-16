@@ -20,6 +20,7 @@ ApplicationWindow {
 
     Component { id: loginPage; LoginPage {} }
     Component { id: navShell; NavShell {} }
+    Component { id: introPage; IntroPage {} }
 
     StackView {
         id: primaryStack
@@ -33,13 +34,20 @@ ApplicationWindow {
         target: Nav
         function onChangePage(page) {
             // Pages inside the shell are the shell's business.
-            if (page !== "login-page" && page !== "nav-shell")
+            if (page !== "login-page" && page !== "nav-shell" && page !== "intro-page")
                 return
             if (window.topPage === page)
                 return
-            primaryStack.replace(page === "login-page" ? loginPage : navShell)
+            primaryStack.replace(page === "login-page" ? loginPage : (page === "intro-page" ? introPage : navShell))
             window.topPage = page
         }
+    }
+
+    // A profile that says pending brings the intro up whenever it is loaded or saved (plan decision 6), so closing the
+    // app mid-intro never loses it.
+    Connections {
+        target: Profile
+        function onIntroPending() { Nav.navigateTo("intro-page") }
     }
 
     Connections {
