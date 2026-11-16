@@ -10,8 +10,8 @@ from datetime import timedelta
 
 from flask import Blueprint, jsonify, request
 
-from . import (prideCatalog as catalog, prideChecks as checks, prideRules as rules, prideSession as session,
-               prideStarters as starters)
+from . import (prideCatalog as catalog, prideChecks as checks, prideHistory as history,
+               prideRules as rules, prideSession as session, prideStarters as starters)
 
 prideUserBP = Blueprint("prideUser", __name__)
 session.install(prideUserBP)
@@ -271,12 +271,8 @@ def decimalOrNone(value):
     return None if value is None else float(value)
 
 
-def itemJson(row):
-    return {"id": row["ItemID"], "exerciseId": row["ExerciseID"], "sets": row["Sets"], "repsMin": row["RepsMin"],
-            "repsMax": row["RepsMax"], "targetWeight": decimalOrNone(row["TargetWeight"]),
-            "targetUnit": row["TargetUnit"], "targetSeconds": row["TargetSeconds"],
-            "targetDistance": decimalOrNone(row["TargetDistance"]), "distanceUnit": row["DistanceUnit"],
-            "restSeconds": row["RestSeconds"], "note": row["Note"]}
+# The item shape lives with the other milestone 3 readers, which show items too (Today and the draft).
+itemJson = history.itemJson
 
 
 def ownedProgram(cur, uid, programId, lock=False):
