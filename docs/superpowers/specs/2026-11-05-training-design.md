@@ -473,22 +473,20 @@ Each milestone is planned and built in its own fresh session.
 Found while building milestone 1 (2026-11-05) and left for the milestone named. The schema is created once, so the
 schema items must be settled before milestone 4 loads it.
 
-**Milestone 2:**
-- **Words in C++.** Session's sign-in and device errors (and `Api::reasonOf`) are still written in C++, and the Sign-in
-  page shows server messages as sent. Milestone 2 starts by mapping each error code to a word in `words.mjs` (the
-  Sign-in page for sign-in, Settings for devices), adding `forms.mjs` checks for username 3–32 and password 8–256
-  before sending, and updating `tst_session`.
-- **`lastSignIn`** is derived from the newest session's expiry minus 30 days. Decide before the schema is loaded
-  whether `Sessions` needs a `CreatedAt` column (Settings shows devices).
-- **Deleting an own exercise.** `RoutineItems.ExerciseID` cascades while `WorkoutExercises.ExerciseID` restricts.
-  Settle this with the own-exercise delete, before the schema is loaded.
-- **Tests to add:** the offline banner is hidden while online; a 401 mid-session lands on Sign-in.
-- **Catalog page:** "isn't on this device yet" can flash before the first refresh starts; a tile caption with no
-  primary muscle starts with " · ".
-- **Ctrl+K:** the open list does not refresh when the catalog changes underneath it.
+**Settled in milestone 2:**
+- Words in C++: the sign-in and device errors are codes now, and their words live in `words.mjs`; `forms.mjs` checks
+  username and password before anything is sent.
+- `lastSignIn` comes from `Sessions.CreatedAt`, not from the session's expiry.
+- Deleting an own exercise takes it out of the person's routines, then deletes it or hides it when a workout names it;
+  `RoutineItems.ExerciseID` no longer cascades.
+- Tests added: the offline banner hidden while online, and a 401 mid-session landing on Sign-in.
+- The Catalog page waits for its first answer before saying an exercise is not on the device, the tile caption no
+  longer starts with " · ", and Ctrl+K's list follows changes to the catalog.
 
 **Milestone 3:**
 - `Suggestions.ProposedRepsMin/Max` have no range `CHECK`; add it before the schema is loaded.
+- Today's rows gain last time's sets and open suggestions, the card gains Log this workout, and the crowns row appears (`/today` gains `last`, `suggestion` and `crowns`).
+- Today's 'changed elsewhere' notice (`Programs.goneNotice`) waits until the Programs page shows it.
 
 **Milestone 4 (rollout):**
 - A real-MySQL smoke test and one live `GET /catalog`: the server's SQL has only met the test fake.
@@ -501,3 +499,6 @@ schema items must be settled before milestone 4 loads it.
   Think about this before the iOS part.
 - The release package carries `secrets.json` beside the exe; it must never be committed.
 - `tools/check-public.ps1` does not read binary files; strip metadata from new images before committing them.
+
+**Later (public readiness):**
+- Deleting an account must delete its workouts before its own exercises: `WorkoutExercises.ExerciseID` restricts, so a cascade from `Users` through `Exercises` would be refused.

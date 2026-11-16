@@ -88,6 +88,26 @@ int main(int argc, char *argv[])
     if (!startText.isEmpty())
         catalog.setText(startText);
 
+    // Dev affordances for the planning pages: PRIDE_START_PROGRAM opens that program once signed in, and
+    // PRIDE_START_ROUTINE then opens that routine as soon as the program has arrived (the page itself is chosen with
+    // PRIDE_START_PAGE). Each connection fires once. Nothing happens unless the variables are set.
+    const int startProgram = qEnvironmentVariableIntValue("PRIDE_START_PROGRAM");
+    const int startRoutine = qEnvironmentVariableIntValue("PRIDE_START_ROUTINE");
+    if (startProgram > 0) {
+        // The routine waits for the program's own answer: it is connected only after open() has been asked, so a
+        // currentChanged from resetting at sign-in cannot use it up.
+        QObject::connect(&session, &Session::loginSucceeded, &programs,
+                         [&programs, startProgram, startRoutine]() {
+                             programs.open(startProgram);
+                             if (startRoutine > 0) {
+                                 QObject::connect(&programs, &Programs::currentChanged, &programs,
+                                                  [&programs, startRoutine]() { programs.openRoutine(startRoutine); },
+                                                  Qt::SingleShotConnection);
+                             }
+                         },
+                         Qt::SingleShotConnection);
+    }
+
     // A known device signs itself in; otherwise the sign-in page asks.
     session.identifyDevice();
 

@@ -2,8 +2,8 @@
 
 The contract between Pride's apps (the desktop app in `app/`, and the iOS app of part 2) and the routes on plutus:
 `server/prideRoutes.py` and `server/prideUserRoutes.py` at `/api/pride` and, for the catalog importer only, `server/prideAdminRoutes.py` at
-`/api/pride-admin`. The desktop app's stub (`app/tests/stub/stub_server.py`) imitates `/api/pride`. Milestone 1's
-routes are below; each later milestone adds its own.
+`/api/pride-admin`. The desktop app's stub (`app/tests/stub/stub_server.py`) imitates `/api/pride`. Milestones 1
+and 2's routes are below; each later milestone adds its own.
 
 ## Conventions
 
@@ -161,6 +161,8 @@ A refused field is `400` naming it; an id that is not the person's is `404`.
 | `GET /starters` | | `data: [starter]` (Foundations, Upper/Lower, Push/Pull/Legs) |
 | `POST /starters/<key>/adopt` | | `data: program` (new, the active one); `404` for an unknown key; `409` (`status: "limit"`) at 20 programs; `409` (`status: "unavailable"`) when none of its exercises are in the catalog |
 
+A starter: `{key, title, blurb, suggested, variant, days, routines: [{title, items: [{exerciseId, name, measure, sets, repsMin, repsMax, targetSeconds, restSeconds}]}], missing: [keys]}`.
+
 Each starter is filled for the caller: the variant their equipment allows (gym, dumbbell, bodyweight), the planned weekdays for their days a week, 3 sets of their goal's rep range (timed items keep their own seconds), 90 s rest for weight × reps and 60 s otherwise. An exercise not in the catalog is left out and listed in `missing`. `suggested` marks the starter for their days a week. Adopting makes a new program, the active one.
 
 ## Today
@@ -169,7 +171,7 @@ Each starter is filled for the caller: the variant their equipment allows (gym, 
 |---|---|---|
 | `GET /today?date=YYYY-MM-DD` | | `data: {program, nextUp, plannedDay, week}`; `400` naming `date` when it is missing or not a date |
 
-`date` is the app's local date. `nextUp` is the routine after the latest workout's in the active program (by rotation, wrapping round), or the first. `plannedDay` is the first planned weekday from `date`, `date` itself unless a workout is already logged that day. `week` is the 7 days from the profile's week start holding `date`: `done` when any workout is logged that day; `planned` only on `date` and later and never on a done day. Milestone 3 adds last time's sets, open suggestions and the latest crowns.
+`date` is the app's local date. `nextUp` is the routine after the latest workout's in the active program (by rotation, wrapping round), or the first. `plannedDay` is the first planned weekday from `date`, `date` itself unless a workout is already logged that day. `week` is the 7 days from the profile's week start holding `date`: `done` when any workout is logged that day; `planned` only on `date` and later and never on a done day. The answer: `program` is `{id, title}` or `null` (no active program); `nextUp` is `{routineId, title, items: [item]}` or `null`; `plannedDay` is a date or `null`; `week` is `[{date, weekday, planned, done}]`. Milestone 3 adds last time's sets, open suggestions and the latest crowns.
 
 ## Admin (`/api/pride-admin`, LAN only)
 

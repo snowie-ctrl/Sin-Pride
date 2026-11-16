@@ -13,10 +13,20 @@
 #   grab.ps1 -Out down.png -Fixture -CatalogDown                (no catalog on the device, none to be had)
 #   grab.ps1 -Out offline.png -Fixture -Offline                 (an offline start on the kept catalog)
 #   grab.ps1 -Out chip.png -Fixture -Click "<x>,<y>"            (click something first, e.g. a filter chip)
+#   grab.ps1 -Out today.png -Seed -Page today-page              (Today with a program)
+#   grab.ps1 -Out today-empty.png -Page today-page              (Today with no program)
+#   grab.ps1 -Out programs.png -Seed -Page programs-page        (Programs)
+#   grab.ps1 -Out routine.png -Seed -Page routine-page -Program 1013 -Routine 1014   (a routine's editor; the ids
+#                                                                are what -Seed makes on the snapshot catalog;
+#                                                                the fixture's are 1003 and 1004)
+#   grab.ps1 -Out intro.png -Intro                              (the intro's welcome)
+#   grab.ps1 -Out settings.png -Seed -Page settings-page        (Settings)
 param(
     [Parameter(Mandatory = $true)][string]$Out,
     [string]$Page = 'catalog-page',
     [int]$Exercise = 0,
+    [int]$Program = 0,
+    [int]$Routine = 0,
     [string]$Text = '',
     [int]$Delay = 8000,
     [string]$Click = '',
@@ -28,6 +38,8 @@ param(
     [switch]$PicturesFail,
     [int]$Slow = 0,
     [switch]$Fixture,
+    [switch]$Seed,
+    [switch]$Intro,
     [switch]$Offline,
     [string]$Exe = ''
 )
@@ -63,6 +75,8 @@ $env:STUB_NEW_DEVICE    = if ($NewDevice) { '1' } else { '' }
 $env:STUB_CATALOG_DOWN  = if ($CatalogDown) { '1' } else { '' }
 $env:STUB_PICTURES_FAIL = if ($PicturesFail) { '1' } else { '' }
 $env:STUB_SLOW          = if ($Slow) { "$Slow" } else { '' }
+$env:STUB_SEED          = if ($Seed) { '1' } else { '' }
+$env:STUB_INTRO         = if ($Intro) { '1' } else { '' }
 # Always set, so a STUB_SNAPSHOT left in the caller's shell never changes what a grab serves.
 $env:STUB_SNAPSHOT      = if ($Fixture) { Join-Path $here 'fixture' } else { '' }
 
@@ -102,6 +116,8 @@ try {
     $env:PRIDE_START_PAGE     = $Page
     $env:PRIDE_START_EXERCISE = if ($Exercise) { "$Exercise" } else { '' }
     $env:PRIDE_START_TEXT     = $Text
+    $env:PRIDE_START_PROGRAM  = if ($Program) { "$Program" } else { '' }
+    $env:PRIDE_START_ROUTINE  = if ($Routine) { "$Routine" } else { '' }
     $env:PRIDE_GRAB           = $outFile
     $env:PRIDE_GRAB_DELAY     = "$Delay"
     $env:PRIDE_CLICK          = $Click
