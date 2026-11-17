@@ -23,7 +23,9 @@
 #include "services/Nav.h"
 #include "services/Profile.h"
 #include "services/Programs.h"
+#include "services/Progress.h"
 #include "services/Session.h"
+#include "services/Workouts.h"
 #include "services/Wiring.h"
 
 // The QML module is a static library (pride_ui), so its plugin is pulled in by hand.
@@ -53,10 +55,12 @@ int main(int argc, char *argv[])
     Catalog catalog(exercises, api);
     Profile profile(api);
     Programs programs(api);
+    Workouts workouts(api);
+    Progress progress(api);
     // Pictures load through managers this makes, so they carry the session token.
     AuthNetworkFactory networkFactory;
 
-    wireServices(session, accounts, exercises, catalog, profile, programs);
+    wireServices(session, accounts, exercises, catalog, profile, programs, workouts, progress);
 
     // Declared after everything QML is given, so it is destroyed first.
     QQmlApplicationEngine engine;
@@ -69,6 +73,8 @@ int main(int argc, char *argv[])
     context->setContextProperty("Catalog", &catalog);
     context->setContextProperty("Profile", &profile);
     context->setContextProperty("Programs", &programs);
+    context->setContextProperty("Workouts", &workouts);
+    context->setContextProperty("Progress", &progress);
 
     engine.loadFromModule("Pride", "Main");
     if (engine.rootObjects().isEmpty())

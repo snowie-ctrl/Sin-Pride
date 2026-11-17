@@ -89,6 +89,8 @@ qt_add_qml_module(pride_ui
         qml/component/ConfirmDialog.qml
         qml/component/OwnExerciseForm.qml
         qml/component/AddToRoutine.qml
+        qml/component/GoldChip.qml
+        qml/component/CrownCard.qml
         qml/logic/words.mjs
         qml/logic/forms.mjs
         qml/logic/units.mjs

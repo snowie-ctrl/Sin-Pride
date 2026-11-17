@@ -2,10 +2,12 @@ import QtQuick
 import QtQuick.Controls
 import "../logic/words.mjs" as Words
 import "../logic/units.mjs" as Units
+import "../logic/logbook.mjs" as Log
 
 // Today (spec §6, layout T1 "Throne"): the Next up card across the page with the routine's exercises and their
-// targets, then the week. Each visit asks the server again. Milestone 3 adds the suggestion chip on each row and
-// "Log this workout" at the card's foot; the crowns row waits for there being any (plan decision 23).
+// targets, then the week. Each visit asks the server again. Each row carries last time's sets and its open suggestion
+// (a gold chip with Take it and Not yet, or a stall's tip with Noted); Log this workout sits at the card's foot; the
+// recent crowns follow the week.
 Rectangle {
     id: root
     objectName: "todayPage"
@@ -18,6 +20,28 @@ Rectangle {
     readonly property var nextUp: hasToday ? today.nextUp : null
     // Set while this page's own "empty program" is being made, so only that save moves the person on.
     property bool makingEmpty: false
+    // A line under the card's title: "Earned it" after a step-up is taken, a refusal, or a change made elsewhere.
+    property string notice: ""
+    // The suggestion being decided, with its exercise's name, for the words once the answer comes.
+    property var deciding: ({})
+
+    function decide(suggestion, exercise, take) {
+        root.notice = ""
+        root.deciding = { id: suggestion.id, name: exercise.name || Words.unknownExercise, proposal: Log.proposal(suggestion) }
+        if (take)
+            Progress.accept(suggestion.id)
+        else
+            Progress.dismiss(suggestion.id)
+    }
+
+    // A loss on another device may have been met elsewhere while Today was not on screen; the service keeps it until
+    // a page has said so (milestone 1's carried item: Today says so too, not only Programs).
+    function takeGoneNotice() {
+        if (Programs.goneNotice.length === 0)
+            return
+        root.notice = Words.goneElsewhere
+        Programs.clearGoneNotice()
+    }
 
     // An exercise the catalog does not know, or has taken out, is named when it can be and marked as gone.
     // The catalog can arrive after Today does, and an own exercise can change, so the lookup reads their revisions
@@ -31,12 +55,14 @@ Rectangle {
     // with no server (where none was made), asks again too, so Today never stays blank. A visit that finds nothing
     // held, nothing failed and the server in reach is waiting for signing in's own fetch, so it does not ask twice.
     Component.onCompleted: {
+        root.takeGoneNotice()
         if (!Programs.todayLoading && (root.hasToday || Programs.todayError.length > 0 || Session.offline))
             Programs.loadToday()
     }
 
     Connections {
         target: Programs
+        function onGoneNoticeChanged() { root.takeGoneNotice() }
         function onSaved(what) {
             if (what === "program" && root.makingEmpty) {
                 root.makingEmpty = false
@@ -46,6 +72,18 @@ Rectangle {
         function onFailed(what) {
             if (what === "program")
                 root.makingEmpty = false
+        }
+    }
+
+    Connections {
+        target: Progress
+        function onDecided(id, what) {
+            if (id === root.deciding.id && what === "accepted")
+                root.notice = Words.earnedIt(root.deciding.name, root.deciding.proposal)
+        }
+        function onFailed(what, code) {
+            if (what === "accept" || what === "dismiss")
+                root.notice = Words.saveProblem(code, "")
         }
     }
 
@@ -63,6 +101,17 @@ Rectangle {
             id: column
             width: flick.width
             spacing: Preferences.spacingLarge
+
+            Text {
+                objectName: "todayNotice"
+                visible: text.length > 0
+                width: parent.width
+                text: root.notice
+                wrapMode: Text.WordWrap
+                color: Preferences.goldColor
+                font.family: Preferences.appFont
+                font.pixelSize: Preferences.fontSizeBody
+            }
 
             Text {
                 objectName: "todayLoading"
@@ -215,9 +264,13 @@ Rectangle {
                             required property int index
                             readonly property var exercise: root.exerciseOf(modelData)
                             readonly property bool gone: root.isGone(exercise)
+                            readonly property var suggestion: modelData.suggestion || null
+                            readonly property bool stepUp: suggestion !== null && suggestion.kind === "increase"
+                            readonly property bool stall: suggestion !== null && suggestion.kind === "stall"
+                            readonly property string measure: modelData.measure || row.exercise.measure || ""
                             objectName: "todayItem"
                             width: cardBody.width
-                            height: 56 + 2 * Preferences.spacingMedium
+                            height: Math.max(56, info.implicitHeight, side.implicitHeight) + 2 * Preferences.spacingMedium
 
                             Rectangle {
                                 visible: row.index > 0
@@ -229,16 +282,20 @@ Rectangle {
                             PictureFrame {
                                 id: pic
                                 x: 0
-                                y: Preferences.spacingMedium
+                                anchors.verticalCenter: parent.verticalCenter
                                 width: 56
                                 height: 56
                                 name: row.exercise.pictures && row.exercise.pictures.length > 0 ? row.exercise.pictures[0] : ""
                             }
                             Column {
-                                anchors { left: pic.right; leftMargin: Preferences.spacingMedium; verticalCenter: pic.verticalCenter }
+                                id: info
+                                anchors { left: pic.right; leftMargin: Preferences.spacingMedium; verticalCenter: parent.verticalCenter }
+                                width: row.width - pic.width - side.width - 2 * Preferences.spacingMedium
                                 spacing: 2
                                 Text {
                                     objectName: "todayItemName"
+                                    width: parent.width
+                                    elide: Text.ElideRight
                                     text: row.exercise.name || Words.unknownExercise
                                     color: Preferences.textPrimary
                                     font.family: Preferences.appFont
@@ -247,21 +304,89 @@ Rectangle {
                                 }
                                 Text {
                                     objectName: "todayItemTarget"
-                                    text: Units.target(row.modelData, row.exercise.measure)
+                                    text: Units.target(row.modelData, row.measure)
                                     color: Preferences.textSecondary
                                     font.family: Preferences.appFont
                                     font.pixelSize: Preferences.fontSizeLabel
                                 }
+                                Text {
+                                    objectName: "todayItemLast"
+                                    visible: text.length > 0
+                                    text: row.modelData.last ? Words.lastTime(Log.setsLine(row.modelData.last.sets, row.measure)) : ""
+                                    color: Preferences.textMuted
+                                    font.family: Preferences.appFont
+                                    font.pixelSize: Preferences.fontSizeCaption
+                                }
                             }
-                            Text {
-                                objectName: "todayItemGone"
-                                visible: row.gone
-                                anchors { right: parent.right; verticalCenter: pic.verticalCenter }
-                                text: Words.leftCatalog
-                                color: Preferences.textMuted
-                                font.family: Preferences.appFont
-                                font.pixelSize: Preferences.fontSizeLabel
+                            Row {
+                                id: side
+                                anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                                spacing: Preferences.spacingSmall
+                                Text {
+                                    objectName: "todayItemGone"
+                                    visible: row.gone
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: Words.leftCatalog
+                                    color: Preferences.textMuted
+                                    font.family: Preferences.appFont
+                                    font.pixelSize: Preferences.fontSizeLabel
+                                }
+                                GoldChip {
+                                    objectName: "todayItemSuggestion"
+                                    visible: row.stepUp
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: row.stepUp ? Words.suggestionChip(Log.lastShort(row.modelData.last, row.measure),
+                                                                            Log.proposal(row.suggestion)) : ""
+                                }
+                                ActionButton {
+                                    objectName: "todayTakeIt"
+                                    visible: row.stepUp
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    compact: true
+                                    gold: true
+                                    text: Words.takeIt
+                                    onClicked: root.decide(row.suggestion, row.exercise, true)
+                                }
+                                ActionButton {
+                                    objectName: "todayNotYet"
+                                    visible: row.stepUp
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    compact: true
+                                    text: Words.notYet
+                                    onClicked: root.decide(row.suggestion, row.exercise, false)
+                                }
+                                Text {
+                                    objectName: "todayStall"
+                                    visible: row.stall
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    textFormat: Text.StyledText
+                                    text: "<b><font color=\"" + Preferences.goldColor + "\">" + Words.holdingSteady + "</font></b> " + Words.stallTip
+                                    color: Preferences.textSecondary
+                                    font.family: Preferences.appFont
+                                    font.pixelSize: Preferences.fontSizeLabel
+                                }
+                                ActionButton {
+                                    objectName: "todayNoted"
+                                    visible: row.stall
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    compact: true
+                                    text: Words.noted
+                                    onClicked: root.decide(row.suggestion, row.exercise, false)
+                                }
                             }
+                        }
+                    }
+                    Item { width: 1; height: Preferences.spacingSmall }
+                    Rectangle { width: cardBody.width; height: 1; color: Preferences.borderColor }
+                    Item { width: 1; height: Preferences.spacingSmall }
+                    ActionButton {
+                        objectName: "logThisWorkout"
+                        primary: true
+                        implicitHeight: 44
+                        text: Words.logThisWorkout
+                        onClicked: {
+                            Workouts.startNew(root.nextUp.routineId)
+                            Nav.navigateTo("log-page")
                         }
                     }
                 }
@@ -283,6 +408,35 @@ Rectangle {
                     width: parent.width
                     days: root.hasToday ? root.today.week : []
                     todayIso: Programs.todayDate
+                }
+            }
+
+            // ---- Recent crowns ----
+            Column {
+                objectName: "crownsRow"
+                width: parent.width
+                spacing: Preferences.spacingSmall
+                visible: root.hasToday && (root.today.crowns || []).length > 0
+                Text {
+                    text: Words.recentCrowns.toUpperCase()
+                    color: Preferences.textMuted
+                    font.family: Preferences.appFont
+                    font.pixelSize: Preferences.fontSizeCaption
+                    font.letterSpacing: 12 * 0.12
+                }
+                Flow {
+                    width: parent.width
+                    spacing: Preferences.spacingMedium
+                    Repeater {
+                        model: root.hasToday ? (root.today.crowns || []) : []
+                        CrownCard {
+                            required property var modelData
+                            objectName: "crownCard"
+                            name: root.exerciseOf(modelData).name || Words.unknownExercise
+                            record: Log.recordText(modelData)
+                            when: Words.crownWhen(modelData.performedOn, Programs.todayDate)
+                        }
+                    }
                 }
             }
         }

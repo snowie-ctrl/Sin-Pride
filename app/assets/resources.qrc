@@ -10,5 +10,7 @@
         <file>images/signout.svg</file>
         <file>images/back.svg</file>
         <file>images/grip.svg</file>
+        <file>images/crown.svg</file>
+        <file>images/progress.svg</file>
     </qresource>
 </RCC>

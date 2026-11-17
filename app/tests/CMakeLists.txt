@@ -57,6 +57,7 @@ pride_test(tst_pages
             ../services/Catalog.h ../services/Catalog.cpp
             ../services/Profile.h ../services/Profile.cpp
             ../services/Programs.h ../services/Programs.cpp
+            ../services/Workouts.h ../services/Workouts.cpp ../services/Progress.h ../services/Progress.cpp
             ../services/Wiring.h ../services/Wiring.cpp
     LIBS Qt6::Network Qt6::Gui Qt6::Quick Qt6::QuickControls2 pride_uiplugin)
 

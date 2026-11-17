@@ -29,7 +29,9 @@
 #include "services/Nav.h"
 #include "services/Profile.h"
 #include "services/Programs.h"
+#include "services/Progress.h"
 #include "services/Session.h"
+#include "services/Workouts.h"
 #include "services/Wiring.h"
 
 Q_IMPORT_QML_PLUGIN(PridePlugin)
@@ -123,6 +125,8 @@ class TestPages : public QObject
     std::unique_ptr<Catalog> catalog;
     std::unique_ptr<Profile> profile;
     std::unique_ptr<Programs> programs;
+    std::unique_ptr<Workouts> workouts;
+    std::unique_ptr<Progress> progress;
     // Declared last, so it is destroyed first: pages go before the services they call.
     std::unique_ptr<QQmlApplicationEngine> engine;
 
@@ -267,6 +271,8 @@ class TestPages : public QObject
         context->setContextProperty("Catalog", catalog.get());
         context->setContextProperty("Profile", profile.get());
         context->setContextProperty("Programs", programs.get());
+        context->setContextProperty("Workouts", workouts.get());
+        context->setContextProperty("Progress", progress.get());
         engine->loadFromModule("Pride", "Main");
         QVERIFY(window());
         window()->resize(1600, 1000);
@@ -355,12 +361,19 @@ private slots:
         profile = std::make_unique<Profile>(*api);
         programs = std::make_unique<Programs>(*api);
         programs->setToday(QDate(2026, 11, 17));
-        wireServices(*session, *accounts, *exercises, *catalog, *profile, *programs);
+        workouts = std::make_unique<Workouts>(*api);
+        progress = std::make_unique<Progress>(*api);
+        server->responses[path("/routines")] = R"({"status":"ok","data":[]})";
+        server->responses[path("/workouts")] = R"({"status":"ok","data":[]})";
+        server->responses[path("/records")] = R"({"status":"ok","data":[]})";
+        wireServices(*session, *accounts, *exercises, *catalog, *profile, *programs, *workouts, *progress);
     }
 
     void cleanup()
     {
         engine.reset();
+        progress.reset();
+        workouts.reset();
         programs.reset();
         profile.reset();
         catalog.reset();
@@ -385,10 +398,10 @@ private slots:
             QTRY_COMPARE(requestsTo(route).size(), 1);
     }
 
-    static QByteArray todayJson(const char *items, const char *planned = R"("2026-11-19")")
+    static QByteArray todayJson(const char *items, const char *planned = R"("2026-11-19")", const char *crowns = "[]")
     {
         return QByteArray(R"({"status":"ok","data":{"program":{"id":5,"title":"Upper/Lower"},
- "nextUp":{"routineId":51,"title":"Lower","items":)") + items + R"(},"plannedDay":)" + planned + R"(,"week":[
+ "nextUp":{"routineId":51,"title":"Lower","items":)") + items + R"(},"plannedDay":)" + planned + R"(,"crowns":)" + crowns + R"(,"week":[
  {"date":"2026-11-16","weekday":0,"planned":false,"done":true},{"date":"2026-11-17","weekday":1,"planned":false,"done":false},
  {"date":"2026-11-18","weekday":2,"planned":false,"done":false},{"date":"2026-11-19","weekday":3,"planned":true,"done":false},
  {"date":"2026-11-20","weekday":4,"planned":true,"done":false},{"date":"2026-11-21","weekday":5,"planned":false,"done":false},
@@ -401,6 +414,21 @@ private slots:
   "targetSeconds":null,"targetDistance":null,"distanceUnit":null,"restSeconds":90,"note":null}])";
     }
 
+    // The curl row as milestone 3's Today sends it: last time three sets of 135 x 12, and an open step-up to 140.
+    static const char *curlItemWithLast(const char *kind = "increase")
+    {
+        static QByteArray built;
+        built = QByteArray(R"([{"id":510,"exerciseId":1,"sets":3,"repsMin":8,"repsMax":12,"targetWeight":135,"targetUnit":"lb",
+  "targetSeconds":null,"targetDistance":null,"distanceUnit":null,"restSeconds":90,"note":null,"measure":"weight_reps",
+  "last":{"workoutId":69,"performedOn":"2026-11-12","sets":[
+   {"warmup":false,"weight":135,"weightUnit":"lb","reps":12,"seconds":null,"distance":null,"distanceUnit":null},
+   {"warmup":false,"weight":135,"weightUnit":"lb","reps":12,"seconds":null,"distance":null,"distanceUnit":null},
+   {"warmup":false,"weight":135,"weightUnit":"lb","reps":12,"seconds":null,"distance":null,"distanceUnit":null}]},
+  "suggestion":{"id":9,"itemId":510,"kind":)") + "\"" + kind + "\"" + R"(,"weight":)" + (QByteArray(kind) == "increase" ? "140" : "null")
+                + R"(,"unit":)" + (QByteArray(kind) == "increase" ? "\"lb\"" : "null")
+                + R"(,"repsMin":null,"repsMax":null,"seconds":null,"basedOn":69,"state":"open"}}])";
+        return built.constData();
+    }
     // ---- Today ----
 
     void todayShowsNextUpWithItsTargets()
@@ -472,13 +500,112 @@ private slots:
         QVERIFY(findVisible("todayItemGone"));
     }
 
-    void noLogButtonOrCrownsYet()
+    void todayRowsShowLastTimeAndTheStepUp()
+    {
+        server->responses[path("/today")] = todayJson(curlItemWithLast());
+        startOnToday();
+        QTRY_COMPARE(countVisible("todayItem"), 1);
+        QCOMPARE(find("todayItemLast")->property("text").toString(), QStringLiteral("Last time 135 × 12, 12, 12"));
+        QCOMPARE(find("todayItemSuggestion")->property("text").toString(), QStringLiteral("3×12 last time: try 140 lb"));
+        QVERIFY(findVisible("todayTakeIt") && findVisible("todayNotYet"));
+        QVERIFY(!findVisible("todayStall"));
+    }
+
+    void takingAStepUpSaysEarnedItAndRefreshesToday()
+    {
+        server->responses[path("/today")] = todayJson(curlItemWithLast());
+        server->responses[path("/suggestions/9/accept")] = R"({"status":"ok","data":{"suggestion":{"id":9,"state":"accepted"},"programId":5}})";
+        startOnToday();
+        QTRY_VERIFY(findVisible("todayTakeIt"));
+        const int asked = requestsTo("/today").size();
+        click(find("todayTakeIt"));
+        QTRY_COMPARE(requestsTo("POST", "/suggestions/9/accept").size(), 1);
+        QTRY_COMPARE(find("todayNotice")->property("text").toString(), QStringLiteral("Earned it: Barbell Curl goes to 140 lb."));
+        QTRY_VERIFY(requestsTo("/today").size() > asked);
+    }
+
+    void notYetLeavesTheRoutineAlone()
+    {
+        server->responses[path("/today")] = todayJson(curlItemWithLast());
+        server->responses[path("/suggestions/9/dismiss")] = R"({"status":"ok","data":{"suggestion":{"id":9,"state":"dismissed"}}})";
+        startOnToday();
+        QTRY_VERIFY(findVisible("todayNotYet"));
+        const int asked = requestsTo("/today").size();
+        click(find("todayNotYet"));
+        QTRY_COMPARE(requestsTo("POST", "/suggestions/9/dismiss").size(), 1);
+        QTRY_VERIFY(requestsTo("/today").size() > asked);
+        QVERIFY(requestsTo("POST", "/suggestions/9/accept").isEmpty());
+        QCOMPARE(find("todayNotice")->property("text").toString(), QString());
+    }
+
+    void aStallShowsItsTipAndNotedDismissesIt()
+    {
+        server->responses[path("/today")] = todayJson(curlItemWithLast("stall"));
+        server->responses[path("/suggestions/9/dismiss")] = R"({"status":"ok","data":{"suggestion":{"id":9,"state":"dismissed"}}})";
+        startOnToday();
+        QTRY_VERIFY(findVisible("todayStall"));
+        QVERIFY(find("todayStall")->property("text").toString().contains(QStringLiteral("try a lighter week, or swap the exercise")));
+        QVERIFY(!findVisible("todayTakeIt"));
+        click(find("todayNoted"));
+        QTRY_COMPARE(requestsTo("POST", "/suggestions/9/dismiss").size(), 1);
+    }
+
+    void aSuggestionSettledElsewhereSaysSo()
+    {
+        server->responses[path("/today")] = todayJson(curlItemWithLast());
+        server->statuses[path("/suggestions/9/accept")] = 409;
+        server->responses[path("/suggestions/9/accept")] = R"({"status":"closed","message":"that suggestion is no longer open"})";
+        startOnToday();
+        QTRY_VERIFY(findVisible("todayTakeIt"));
+        click(find("todayTakeIt"));
+        QTRY_COMPARE(find("todayNotice")->property("text").toString(),
+                     QStringLiteral("That suggestion was already settled, maybe on another device."));
+    }
+
+    void logThisWorkoutStartsTheNextUpRoutine()
+    {
+        server->responses[path("/today")] = todayJson(curlItem());
+        startOnToday();
+        QTRY_VERIFY(findVisible("logThisWorkout"));
+        click(find("logThisWorkout"));
+        QTRY_COMPARE(workouts->routineId(), 51);
+        QCOMPARE(nav->currentPage(), QStringLiteral("log-page"));
+        QTRY_COMPARE(requestsTo("/workouts/draft").size(), 1);
+        QCOMPARE(QUrlQuery(requestsTo("/workouts/draft").first()).queryItemValue("routineId"), QStringLiteral("51"));
+    }
+
+    void theCrownsRowShowsTheRecentCrowns()
+    {
+        server->responses[path("/today")] = todayJson(curlItem(), R"("2026-11-19")",
+            R"([{"exerciseId":1,"kind":"heaviest","workoutId":69,"performedOn":"2026-11-16","weight":140,"weightUnit":"lb","reps":8,
+                "seconds":null,"distance":null,"distanceUnit":null,"estimate":null,"estimateUnit":null}])");
+        startOnToday();
+        QTRY_VERIFY(findVisible("crownsRow"));
+        QCOMPARE(countVisible("crownCard"), 1);
+        QCOMPARE(find("crownCard")->property("name").toString(), QStringLiteral("Barbell Curl"));
+        QCOMPARE(find("crownCard")->property("record").toString(), QStringLiteral("140 lb × 8"));
+        QCOMPARE(find("crownCard")->property("when").toString(), QStringLiteral("New crown · Mon"));
+    }
+
+    void noCrownsNoRow()
     {
         server->responses[path("/today")] = todayJson(curlItem());
         startOnToday();
         QTRY_VERIFY(findVisible("nextUpCard"));
-        QVERIFY(!find("logThisWorkout"));
-        QVERIFY(!find("crownsRow"));
+        QVERIFY(!findVisible("crownsRow"));
+    }
+
+    void todaySaysWhenSomethingWasChangedElsewhere()
+    {
+        // Milestone 1's carried item: Today shows the "changed elsewhere" notice itself.
+        server->responses[path("/today")] = todayJson(curlItem());
+        server->statuses[path("/programs/5")] = 404;
+        startOnToday();
+        QTRY_VERIFY(findVisible("nextUpCard"));
+        programs->open(5);
+        QTRY_COMPARE(find("todayNotice")->property("text").toString(),
+                     QStringLiteral("That was changed or removed on another device, so it's been closed here."));
+        QVERIFY(programs->goneNotice().isEmpty());
     }
 
     static QByteArray twoPrograms()
