@@ -39,6 +39,10 @@ qt_add_executable(appPride
     services/Profile.cpp
     services/Programs.h
     services/Programs.cpp
+    services/Workouts.h
+    services/Workouts.cpp
+    services/Progress.h
+    services/Progress.cpp
     services/Wiring.h
     services/Wiring.cpp
 )

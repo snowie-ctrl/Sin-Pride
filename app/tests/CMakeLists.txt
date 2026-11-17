@@ -67,3 +67,11 @@ pride_test(tst_profile
 pride_test(tst_programs
     SOURCES tst_programs.cpp FakeServer.h ${PRIDE_API} ../services/Programs.h ../services/Programs.cpp
     LIBS Qt6::Network)
+
+pride_test(tst_workouts
+    SOURCES tst_workouts.cpp FakeServer.h ${PRIDE_API} ../services/Workouts.h ../services/Workouts.cpp
+    LIBS Qt6::Network)
+
+pride_test(tst_progress
+    SOURCES tst_progress.cpp FakeServer.h ${PRIDE_API} ../services/Progress.h ../services/Progress.cpp
+    LIBS Qt6::Network)
