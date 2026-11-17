@@ -24,8 +24,14 @@ Rectangle {
     property string notice: ""
     // The suggestion being decided, with its exercise's name, for the words once the answer comes.
     property var deciding: ({})
+    // True from a decision's request to its answer, so a second tap cannot post the same suggestion twice (the second
+    // would be refused as already settled, and its words would sit over the true "Earned it").
+    property bool pending: false
 
     function decide(suggestion, exercise, take) {
+        if (root.pending)
+            return
+        root.pending = true
         root.notice = ""
         root.deciding = { id: suggestion.id, name: exercise.name || Words.unknownExercise, proposal: Log.proposal(suggestion) }
         if (take)
@@ -78,12 +84,15 @@ Rectangle {
     Connections {
         target: Progress
         function onDecided(id, what) {
+            root.pending = false
             if (id === root.deciding.id && what === "accepted")
                 root.notice = Words.earnedIt(root.deciding.name, root.deciding.proposal)
         }
         function onFailed(what, code) {
-            if (what === "accept" || what === "dismiss")
+            if (what === "accept" || what === "dismiss") {
+                root.pending = false
                 root.notice = Words.saveProblem(code, "")
+            }
         }
     }
 
@@ -290,7 +299,7 @@ Rectangle {
                             Column {
                                 id: info
                                 anchors { left: pic.right; leftMargin: Preferences.spacingMedium; verticalCenter: parent.verticalCenter }
-                                width: row.width - pic.width - side.width - 2 * Preferences.spacingMedium
+                                width: Math.max(160, row.width - pic.width - side.width - 2 * Preferences.spacingMedium)
                                 spacing: 2
                                 Text {
                                     objectName: "todayItemName"
@@ -343,6 +352,7 @@ Rectangle {
                                     visible: row.stepUp
                                     anchors.verticalCenter: parent.verticalCenter
                                     compact: true
+                                    enabled: !root.pending
                                     gold: true
                                     text: Words.takeIt
                                     onClicked: root.decide(row.suggestion, row.exercise, true)
@@ -352,6 +362,7 @@ Rectangle {
                                     visible: row.stepUp
                                     anchors.verticalCenter: parent.verticalCenter
                                     compact: true
+                                    enabled: !root.pending
                                     text: Words.notYet
                                     onClicked: root.decide(row.suggestion, row.exercise, false)
                                 }
@@ -359,6 +370,8 @@ Rectangle {
                                     objectName: "todayStall"
                                     visible: row.stall
                                     anchors.verticalCenter: parent.verticalCenter
+                                    width: 360
+                                    wrapMode: Text.WordWrap
                                     textFormat: Text.StyledText
                                     text: "<b><font color=\"" + Preferences.goldColor + "\">" + Words.holdingSteady + "</font></b> " + Words.stallTip
                                     color: Preferences.textSecondary
@@ -370,6 +383,7 @@ Rectangle {
                                     visible: row.stall
                                     anchors.verticalCenter: parent.verticalCenter
                                     compact: true
+                                    enabled: !root.pending
                                     text: Words.noted
                                     onClicked: root.decide(row.suggestion, row.exercise, false)
                                 }

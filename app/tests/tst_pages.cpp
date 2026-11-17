@@ -524,6 +524,18 @@ private slots:
         QTRY_VERIFY(requestsTo("/today").size() > asked);
     }
 
+    void aDoubleTapOnTakeItPostsOnce()
+    {
+        server->responses[path("/today")] = todayJson(curlItemWithLast());
+        server->responses[path("/suggestions/9/accept")] = R"({"status":"ok","data":{"suggestion":{"id":9,"state":"accepted"},"programId":5}})";
+        startOnToday();
+        QTRY_VERIFY(findVisible("todayTakeIt"));
+        click(find("todayTakeIt"));
+        click(find("todayTakeIt"));
+        QTRY_COMPARE(find("todayNotice")->property("text").toString(), QStringLiteral("Earned it: Barbell Curl goes to 140 lb."));
+        QCOMPARE(requestsTo("POST", "/suggestions/9/accept").size(), 1);
+    }
+
     void notYetLeavesTheRoutineAlone()
     {
         server->responses[path("/today")] = todayJson(curlItemWithLast());
